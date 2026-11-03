@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- 背景流光渐变 -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b" />
+      <stop offset="40%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+
+    <!-- 硬盘金属质感外圈 -->
+    <linearGradient id="metalBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa" />
+      <stop offset="50%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+
+    <!-- 盘体高光 -->
+    <linearGradient id="platterGrad" x1="20%" y1="20%" x2="80%" y2="80%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#2563eb" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+
+    <!-- 扫帚/清理粒子光斑 -->
+    <linearGradient id="sparkleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+
+    <!-- 软链接光环 -->
+    <linearGradient id="linkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a855f7" />
+      <stop offset="100%" stop-color="#ec4899" />
+    </linearGradient>
+
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- 圆角矩形背景 (符合现代 Windows App 图标设计) -->
+  <rect x="24" y="24" width="464" height="464" rx="104" fill="url(#bgGrad)" stroke="url(#metalBorder)" stroke-width="8"/>
+
+  <!-- 内部光晕装饰 -->
+  <circle cx="256" cy="256" r="170" fill="none" stroke="#1e293b" stroke-width="4" stroke-dasharray="8 8" />
+
+  <!-- 磁盘外圈 -->
+  <circle cx="240" cy="260" r="130" fill="#0f172a" stroke="url(#metalBorder)" stroke-width="12" filter="url(#glow)"/>
+  <circle cx="240" cy="260" r="95" fill="none" stroke="#1e3a8a" stroke-width="6"/>
+
+  <!-- 盘芯转轴 -->
+  <circle cx="240" cy="260" r="48" fill="url(#platterGrad)" stroke="#93c5fd" stroke-width="4"/>
+  <circle cx="240" cy="260" r="20" fill="#0f172a" stroke="#60a5fa" stroke-width="3"/>
+
+  <!-- 字母 C 造型与缺口数据流设计 (凸显 C 盘) -->
+  <path d="M 240 160 A 100 100 0 1 0 325 210" fill="none" stroke="#60a5fa" stroke-width="18" stroke-linecap="round"/>
+
+  <!-- 象征迁移的双向动态软链接环 (Link) -->
+  <g transform="translate(290, 150)">
+    <rect x="0" y="0" width="80" height="42" rx="21" fill="none" stroke="url(#linkGrad)" stroke-width="10" transform="rotate(-35)"/>
+    <rect x="42" y="-12" width="80" height="42" rx="21" fill="none" stroke="url(#linkGrad)" stroke-width="10" transform="rotate(-35)"/>
+  </g>
+
+  <!-- 象征清理与加速的闪光粒子 (Sparkles) -->
+  <path d="M 140 130 Q 140 160 110 160 Q 140 160 140 190 Q 140 160 170 160 Q 140 160 140 130 Z" fill="url(#sparkleGrad)" filter="url(#glow)"/>
+  <path d="M 370 330 Q 370 350 350 350 Q 370 350 370 370 Q 370 350 390 350 Q 370 350 370 330 Z" fill="#38bdf8" filter="url(#glow)"/>
+  <circle cx="390" cy="190" r="8" fill="#fbbf24"/>
+  <circle cx="120" cy="350" r="6" fill="#a855f7"/>
+
+  <!-- 底部微文字: C-SPACE 质感字标 -->
+  <text x="256" y="445" font-family="Segoe UI, -apple-system, sans-serif" font-size="28" font-weight="800" fill="#94a3b8" letter-spacing="6" text-anchor="middle">
+    C-SPACE
+  </text>
+</svg>
+
