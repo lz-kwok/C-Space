@@ -22,8 +22,11 @@ export const MigratorView: React.FC<Props> = ({ initialSourcePath }) => {
   const [progress, setProgress] = useState<MigrateProgress | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const [hasScannedCandidates, setHasScannedCandidates] = useState<boolean>(false);
+
   const fetchCandidates = async () => {
     setLoadingCandidates(true);
+    setHasScannedCandidates(true);
     try {
       const res = await invoke<MigrateCandidate[]>("get_migrate_candidates");
       setCandidates(res);
@@ -35,19 +38,8 @@ export const MigratorView: React.FC<Props> = ({ initialSourcePath }) => {
   };
 
   useEffect(() => {
-    fetchCandidates();
-
     invoke<DriveInfo[]>("get_drives").then((res) => {
       setDrives(res);
-      // 默认选择非 C 盘且空间最大的磁盘作为默认目标
-      const nonCDrives = res.filter((d) => !d.letter.toLowerCase().startsWith("c"));
-      if (nonCDrives.length > 0) {
-        const best = nonCDrives.sort((a, b) => b.free - a.free)[0];
-        if (sourcePath) {
-          const sub = sourcePath.replace(/^[a-zA-Z]:\\/, "");
-          setTargetPath(`${best.letter}:\\C-SpaceVault\\${sub}`);
-        }
-      }
     });
 
     const unlisten = listen<MigrateProgress>("migrate-progress", (event) => {
@@ -57,7 +49,18 @@ export const MigratorView: React.FC<Props> = ({ initialSourcePath }) => {
     return () => {
       unlisten.then((f) => f());
     };
-  }, [sourcePath]);
+  }, []);
+
+  useEffect(() => {
+    if (sourcePath && drives.length > 0) {
+      const nonCDrives = drives.filter((d) => !d.letter.toLowerCase().startsWith("c"));
+      if (nonCDrives.length > 0) {
+        const best = nonCDrives.sort((a, b) => b.free - a.free)[0];
+        const sub = sourcePath.replace(/^[a-zA-Z]:\\/, "");
+        setTargetPath(`${best.letter}:\\C-SpaceVault\\${sub}`);
+      }
+    }
+  }, [sourcePath, drives]);
 
   const handleBrowseSource = async () => {
     try {
@@ -177,7 +180,16 @@ export const MigratorView: React.FC<Props> = ({ initialSourcePath }) => {
           基于内置应用特征库，自动探测 C 盘庞大但适合迁移的软件目录（如微信/QQ数据、IDE缓存扩展、包管理器缓存等）。点击下方任一项可直接填充搬家方案：
         </p>
 
-        {loadingCandidates ? (
+        {!hasScannedCandidates && !loadingCandidates ? (
+          <div className="py-4 text-center">
+            <button
+              onClick={fetchCandidates}
+              className="px-4 py-2 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-lg text-xs font-semibold shadow transition"
+            >
+              探测建议搬家的软件数据目录
+            </button>
+          </div>
+        ) : loadingCandidates ? (
           <div className="flex items-center justify-center py-6 text-xs text-slate-500 gap-2">
             <RefreshCw size={14} className="animate-spin text-blue-400" />
             正在探测 C 盘建议搬家的软件目录及体积...

@@ -10,6 +10,8 @@ import {
   CornerDownRight,
   FolderOpen,
   ArrowUp,
+  StopCircle,
+  Play,
 } from "lucide-react";
 import { DriveInfo, FileNode, ScanProgressEvent } from "../types";
 import { formatBytes } from "../utils";
@@ -25,6 +27,7 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   const [history, setHistory] = useState<string[]>(["C:\\"]);
   const [nodes, setNodes] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasScanned, setHasScanned] = useState(false);
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null);
   const activeScanIdRef = useRef<string>("");
 
@@ -38,9 +41,7 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
         setHistory([first]);
       }
     });
-  }, []);
 
-  useEffect(() => {
     // 监听渐进式扫描推送事件
     const unlisten = listen<ScanProgressEvent>("scan-node-found", (event) => {
       const payload = event.payload;
@@ -69,6 +70,7 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     const scanId = `scan-${Date.now()}`;
     activeScanIdRef.current = scanId;
     setLoading(true);
+    setHasScanned(true);
     setNodes([]); // 清空上一层，准备渐进式填充
     setSelectedNode(null);
     setInputPath(path);
@@ -88,14 +90,25 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     }
   };
 
-  useEffect(() => {
+  const handleStartScan = () => {
     fetchDir(currentPath);
-  }, [currentPath]);
+  };
+
+  const handleCancelScan = async () => {
+    try {
+      await invoke("cancel_scan");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleOpenDir = (node: FileNode) => {
     if (!node.isDir || node.isLink) return;
     setHistory([...history, node.path]);
     setCurrentPath(node.path);
+    fetchDir(node.path);
   };
 
   const handleBack = () => {
@@ -105,6 +118,7 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     const prev = newHist[newHist.length - 1];
     setHistory(newHist);
     setCurrentPath(prev);
+    fetchDir(prev);
   };
 
   const handleUpDir = () => {
@@ -115,8 +129,7 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
       const parent = p.substring(0, lastSlash) + (p.indexOf(":") === lastSlash - 1 ? "\\" : "");
       setHistory([...history, parent]);
       setCurrentPath(parent);
-    } else if (lastSlash === 2 && p.endsWith(":")) {
-      // 已经是盘符根目录
+      fetchDir(parent);
     }
   };
 
@@ -124,6 +137,9 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     const driveRoot = `${letter}:\\`;
     setHistory([...history, driveRoot]);
     setCurrentPath(driveRoot);
+    setInputPath(driveRoot);
+    setNodes([]);
+    setHasScanned(false);
   };
 
   const handleBrowseFolder = async () => {
@@ -136,6 +152,9 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
       if (selected && typeof selected === "string") {
         setHistory([...history, selected]);
         setCurrentPath(selected);
+        setInputPath(selected);
+        setNodes([]);
+        setHasScanned(false);
       }
     } catch (e) {
       console.error("打开文件夹选择框失败:", e);
@@ -144,13 +163,18 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
 
   const handleInputSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputPath.trim() && inputPath.trim() !== currentPath) {
+    if (inputPath.trim()) {
       setHistory([...history, inputPath.trim()]);
       setCurrentPath(inputPath.trim());
+      fetchDir(inputPath.trim());
     }
   };
 
   const totalDirSize = nodes.reduce((acc, curr) => acc + curr.size, 0);
+
+  const activeDriveInfo = drives.find((d) =>
+    currentPath.toUpperCase().startsWith(`${d.letter.toUpperCase()}:`)
+  );
 
   return (
     <div className="flex h-full flex-col p-4 gap-4">
@@ -185,24 +209,45 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
             })}
           </div>
 
-          {/* 浏览文件夹按钮 */}
+          {/* 浏览文件夹与主扫描控制按钮 */}
           <div className="flex items-center gap-2">
             <button
               onClick={handleBrowseFolder}
-              className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition"
               title="浏览并选择本机任意文件夹"
             >
               <FolderOpen size={13} className="text-amber-400" />
               浏览文件夹...
             </button>
-            <button
-              onClick={() => fetchDir(currentPath)}
-              disabled={loading}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 transition"
-              title="刷新当前目录"
-            >
-              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            </button>
+
+            {loading ? (
+              <button
+                onClick={handleCancelScan}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-semibold shadow-lg shadow-red-600/20 transition"
+              >
+                <StopCircle size={14} />
+                停止扫描
+              </button>
+            ) : (
+              <button
+                onClick={handleStartScan}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-lg shadow-blue-600/30 transition"
+              >
+                <Play size={14} className="fill-current" />
+                {hasScanned ? "重新透视分析" : "开始透视分析"}
+              </button>
+            )}
+
+            {hasScanned && (
+              <button
+                onClick={() => fetchDir(currentPath)}
+                disabled={loading}
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 transition"
+                title="刷新当前目录"
+              >
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -236,7 +281,7 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
             </div>
             <button
               type="submit"
-              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition shrink-0"
+              className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition shrink-0"
             >
               前往
             </button>
@@ -246,137 +291,190 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
 
       {/* 核心内容区：左侧目录树形表格 + 右侧属性与安全解析 */}
       <div className="flex-1 flex gap-4 min-h-0">
-        {/* 目录表格 */}
-        <div className="flex-[3] bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden flex flex-col">
-          <div className="grid grid-cols-12 gap-2 px-4 py-2.5 bg-slate-800/40 text-xs font-semibold text-slate-400 border-b border-slate-800">
-            <span className="col-span-5">名称 / 路径</span>
-            <span className="col-span-2 text-right">大小</span>
-            <span className="col-span-2 text-right">文件数</span>
-            <span className="col-span-3 text-center">用途与特征</span>
-          </div>
+        {/* 未触发扫描时的就绪等待区 */}
+        {!hasScanned && !loading && nodes.length === 0 ? (
+          <div className="flex-1 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col items-center justify-center p-8 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-blue-950/60 border border-blue-800/40 flex items-center justify-center text-blue-400 mb-4 shadow-lg shadow-blue-900/20">
+              <HardDrive size={32} />
+            </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
-            {nodes.length === 0 && !loading && (
-              <div className="h-full flex items-center justify-center text-slate-500 text-xs">
-                当前目录为空或没有读取权限
+            <h3 className="text-base font-bold text-slate-100">
+              就绪：目标路径「{currentPath}」
+            </h3>
+
+            <p className="text-xs text-slate-400 max-w-md mt-2 leading-relaxed">
+              为杜绝软件启动时因全盘遍历造成的卡顿与高负荷，C-Space 采用<strong>按需手动触发机制</strong>。
+              你可以随时切换磁盘或选择文件夹，确认无误后点击下方按钮开启透视。
+            </p>
+
+            {activeDriveInfo && (
+              <div className="mt-4 bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-2.5 flex items-center gap-6 text-xs">
+                <div>
+                  <span className="text-slate-500 block text-[10px]">磁盘盘符</span>
+                  <strong className="text-slate-200 font-mono text-sm">{activeDriveInfo.letter}:</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px]">可用空间</span>
+                  <strong className="text-emerald-400 font-mono">{formatBytes(activeDriveInfo.free)}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px]">总容量</span>
+                  <strong className="text-slate-300 font-mono">{formatBytes(activeDriveInfo.total)}</strong>
+                </div>
               </div>
             )}
 
-            {nodes.map((node) => {
-              const isSelected = selectedNode?.path === node.path;
-              return (
-                <div
-                  key={node.path}
-                  onClick={() => setSelectedNode(node)}
-                  onDoubleClick={() => handleOpenDir(node)}
-                  className={`grid grid-cols-12 gap-2 px-4 py-2 text-xs items-center cursor-pointer transition select-none ${
-                    isSelected ? "bg-blue-600/20" : "hover:bg-slate-800/40"
-                  }`}
-                >
-                  {/* 名称与图标 */}
-                  <div className="col-span-5 flex items-center gap-2 overflow-hidden">
-                    {node.isDir ? (
-                      <Folder
-                        size={15}
-                        className={
-                          node.isLink
-                            ? "text-purple-400 fill-purple-400/20 shrink-0"
-                            : "text-blue-400 fill-blue-400/20 shrink-0"
-                        }
-                      />
-                    ) : (
-                      <div className="w-3.5 h-3.5 border border-slate-600 rounded shrink-0" />
-                    )}
-                    <span
-                      className={`truncate font-medium ${
-                        node.isLink ? "text-purple-300 font-mono" : "text-slate-200"
-                      }`}
-                      title={node.name}
-                    >
-                      {node.name}
-                    </span>
-                    {node.isLink && (
-                      <span className="text-[10px] bg-purple-950/80 text-purple-300 border border-purple-800/60 px-1 rounded shrink-0">
-                        联接
-                      </span>
-                    )}
-                  </div>
-
-                  {/* 大小 */}
-                  <div className="col-span-2 text-right font-mono text-slate-300">
-                    {node.isLink ? (
-                      <span className="text-[10px] text-purple-400">已搬迁</span>
-                    ) : (
-                      formatBytes(node.size)
-                    )}
-                  </div>
-
-                  {/* 文件数 */}
-                  <div className="col-span-2 text-right font-mono text-slate-400">
-                    {node.fileCount > 0 ? `${node.fileCount} 项` : "-"}
-                  </div>
-
-                  {/* 用途与标识 */}
-                  <div className="col-span-3 flex items-center justify-center gap-1.5 overflow-hidden">
-                    {node.purpose ? (
-                      <span className="truncate text-[11px] bg-slate-800/80 px-2 py-0.5 rounded text-slate-300 border border-slate-700/60">
-                        {node.purpose}
-                      </span>
-                    ) : node.isHeuristic ? (
-                      <span className="truncate text-[10px] text-slate-500 italic">
-                        推断缓存
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-slate-600">-</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            <div className="mt-6 flex items-center gap-3">
+              <button
+                onClick={handleStartScan}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-600/30 flex items-center gap-2 transition"
+              >
+                <Play size={15} className="fill-current" />
+                开始透视分析当前目录
+              </button>
+            </div>
           </div>
-
-          {/* 底部汇总 */}
-          <div className="px-4 py-2 bg-slate-950/60 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400">
-            <span>
-              已统计 <strong className="text-slate-200">{nodes.length}</strong> 项
-            </span>
-            <span>
-              总容量合计:{" "}
-              <strong className="text-blue-400 font-mono">
-                {formatBytes(totalDirSize)}
-              </strong>
-            </span>
-          </div>
-        </div>
-
-        {/* 右侧属性看板 */}
-        <div className="flex-1 bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between overflow-y-auto">
-          {selectedNode ? (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-slate-100 break-all">
-                  {selectedNode.name}
-                </h3>
-                <p className="text-[11px] font-mono text-slate-400 break-all mt-1 bg-slate-950 p-2 rounded-lg border border-slate-800/60">
-                  {selectedNode.path}
-                </p>
+        ) : (
+          <>
+            {/* 目录表格 */}
+            <div className="flex-[3] bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden flex flex-col">
+              <div className="grid grid-cols-12 gap-2 px-4 py-2.5 bg-slate-800/40 text-xs font-semibold text-slate-400 border-b border-slate-800">
+                <span className="col-span-5">名称 / 路径</span>
+                <span className="col-span-2 text-right">大小</span>
+                <span className="col-span-2 text-right">文件数</span>
+                <span className="col-span-3 text-center">用途与特征</span>
               </div>
 
-              {/* 空间占用看板 */}
-              <div className="bg-slate-950/40 p-3 rounded-lg border border-slate-800/60 space-y-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">体积占用:</span>
-                  <span className="font-mono text-blue-400 font-bold">
-                    {selectedNode.isLink ? "0 (已迁移)" : formatBytes(selectedNode.size)}
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
+                {nodes.length === 0 && !loading && (
+                  <div className="h-full flex items-center justify-center text-slate-500 text-xs">
+                    当前目录为空或没有读取权限
+                  </div>
+                )}
+
+                {nodes.map((node) => {
+                  const isSelected = selectedNode?.path === node.path;
+                  return (
+                    <div
+                      key={node.path}
+                      onClick={() => setSelectedNode(node)}
+                      onDoubleClick={() => handleOpenDir(node)}
+                      className={`grid grid-cols-12 gap-2 px-4 py-2 text-xs items-center cursor-pointer transition select-none ${
+                        isSelected ? "bg-blue-600/20" : "hover:bg-slate-800/40"
+                      }`}
+                    >
+                      {/* 名称与图标 */}
+                      <div className="col-span-5 flex items-center gap-2 overflow-hidden">
+                        {node.isDir ? (
+                          <Folder
+                            size={15}
+                            className={
+                              node.isLink
+                                ? "text-purple-400 fill-purple-400/20 shrink-0"
+                                : "text-blue-400 fill-blue-400/20 shrink-0"
+                            }
+                          />
+                        ) : (
+                          <div className="w-3.5 h-3.5 border border-slate-600 rounded shrink-0" />
+                        )}
+                        <span
+                          className={`truncate font-medium ${
+                            node.isLink ? "text-purple-300 font-mono" : "text-slate-200"
+                          }`}
+                          title={node.name}
+                        >
+                          {node.name}
+                        </span>
+                        {node.isLink && (
+                          <span className="text-[10px] bg-purple-950/80 text-purple-300 border border-purple-800/60 px-1 rounded shrink-0">
+                            联接
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 大小 */}
+                      <div className="col-span-2 text-right font-mono text-slate-300">
+                        {node.isLink ? (
+                          <span className="text-[10px] text-purple-400">已搬迁</span>
+                        ) : (
+                          formatBytes(node.size)
+                        )}
+                      </div>
+
+                      {/* 文件数 */}
+                      <div className="col-span-2 text-right font-mono text-slate-400">
+                        {node.fileCount > 0 ? `${node.fileCount} 项` : "-"}
+                      </div>
+
+                      {/* 用途与标识 */}
+                      <div className="col-span-3 flex items-center justify-center gap-1.5 overflow-hidden">
+                        {node.purpose ? (
+                          <span className="truncate text-[11px] bg-slate-800/80 px-2 py-0.5 rounded text-slate-300 border border-slate-700/60">
+                            {node.purpose}
+                          </span>
+                        ) : node.isHeuristic ? (
+                          <span className="truncate text-[10px] text-slate-500 italic">
+                            推断缓存
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-600">-</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 底部汇总 */}
+              <div className="px-4 py-2 bg-slate-950/60 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400">
+                <div className="flex items-center gap-2">
+                  <span>
+                    已扫描 <strong className="text-slate-200">{nodes.length}</strong> 项
                   </span>
+                  {loading && (
+                    <span className="flex items-center gap-1.5 text-blue-400">
+                      <RefreshCw size={12} className="animate-spin" />
+                      正在流式分析子目录大小...
+                    </span>
+                  )}
                 </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">子文件数:</span>
-                  <span className="font-mono text-slate-200">
-                    {selectedNode.fileCount} 项
-                  </span>
-                </div>
-                {selectedNode.isLink && selectedNode.linkTarget && (
+                <span>
+                  当前层级合计:{" "}
+                  <strong className="text-blue-400 font-mono">
+                    {formatBytes(totalDirSize)}
+                  </strong>
+                </span>
+              </div>
+            </div>
+
+            {/* 右侧属性看板 */}
+            <div className="flex-1 bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between overflow-y-auto">
+              {selectedNode ? (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-100 break-all">
+                      {selectedNode.name}
+                    </h3>
+                    <p className="text-[11px] font-mono text-slate-400 break-all mt-1 bg-slate-950 p-2 rounded-lg border border-slate-800/60">
+                      {selectedNode.path}
+                    </p>
+                  </div>
+
+                  {/* 空间占用看板 */}
+                  <div className="bg-slate-950/40 p-3 rounded-lg border border-slate-800/60 space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-400">体积占用:</span>
+                      <span className="font-mono text-blue-400 font-bold">
+                        {selectedNode.isLink ? "0 (已迁移)" : formatBytes(selectedNode.size)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-400">子文件数:</span>
+                      <span className="font-mono text-slate-200">
+                        {selectedNode.fileCount} 项
+                      </span>
+                    </div>
+                    {selectedNode.isLink && selectedNode.linkTarget && (
                   <div className="pt-2 border-t border-slate-800 text-xs">
                     <span className="text-purple-400 font-medium block mb-1">
                       重定向目标路径:
@@ -449,6 +547,8 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
             </div>
           )}
         </div>
+        </>
+      )}
       </div>
     </div>
   );

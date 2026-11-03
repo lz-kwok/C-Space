@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Trash2, ShieldCheck, RefreshCw, CheckCircle, Info } from "lucide-react";
+import { Trash2, ShieldCheck, RefreshCw, CheckCircle, Play, Sparkles } from "lucide-react";
 import { CleanItemSummary, CleanProgress, CleanResult } from "../types";
 import { formatBytes } from "../utils";
 
@@ -10,12 +10,14 @@ export const CleanerView: React.FC = () => {
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [toRecycleBin, setToRecycleBin] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
+  const [hasScanned, setHasScanned] = useState<boolean>(false);
   const [cleaning, setCleaning] = useState<boolean>(false);
   const [progress, setProgress] = useState<CleanProgress | null>(null);
   const [lastResult, setLastResult] = useState<CleanResult | null>(null);
 
   const fetchCandidates = async () => {
     setLoading(true);
+    setHasScanned(true);
     try {
       const res = await invoke<CleanItemSummary[]>("get_clean_candidates");
       setItems(res);
@@ -30,8 +32,7 @@ export const CleanerView: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchCandidates();
-
+    // 监听进度，但不自动执行全盘遍历，由用户主动点击触发
     const unlisten = listen<CleanProgress>("clean-progress", (event) => {
       setProgress(event.payload);
     });
@@ -105,10 +106,15 @@ export const CleanerView: React.FC = () => {
           <button
             onClick={fetchCandidates}
             disabled={loading}
-            className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300"
-            title="重新扫描可清理缓存"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold shadow transition disabled:opacity-50"
+            title="扫描可清理缓存"
           >
-            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+            {loading ? (
+              <RefreshCw size={14} className="animate-spin" />
+            ) : (
+              <Play size={13} className="fill-current" />
+            )}
+            <span>{hasScanned ? "重新扫描" : "开始扫描"}</span>
           </button>
         </div>
 
@@ -187,18 +193,39 @@ export const CleanerView: React.FC = () => {
         <div className="px-4 py-2.5 bg-slate-800/40 border-b border-slate-800 flex justify-between items-center text-xs">
           <div className="flex items-center gap-3">
             <span className="font-semibold text-slate-300">智能清理候选项</span>
-            <button
-              onClick={selectAllSafe}
-              className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[11px]"
-            >
-              仅勾选推荐项 (🟢 安全)
-            </button>
+            {hasScanned && items.length > 0 && (
+              <button
+                onClick={selectAllSafe}
+                className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[11px]"
+              >
+                仅勾选推荐项 (🟢 安全)
+              </button>
+            )}
           </div>
-          <span className="text-slate-500">仅展示发现存在缓存的目录</span>
+          <span className="text-slate-500">根据 50+ 规则库与启发式引擎智能过滤</span>
         </div>
 
         <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
-          {loading ? (
+          {!hasScanned && !loading ? (
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-950/60 border border-emerald-800/40 flex items-center justify-center text-emerald-400 mb-3 shadow">
+                <Sparkles size={28} />
+              </div>
+              <h3 className="text-sm font-bold text-slate-200">
+                就绪：专项智能清理
+              </h3>
+              <p className="text-xs text-slate-400 max-w-sm mt-1">
+                已关闭自动开机扫描，避免后台卡顿。点击下方按钮开始检索系统日志、浏览器与软件临时缓存。
+              </p>
+              <button
+                onClick={fetchCandidates}
+                className="mt-4 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition"
+              >
+                <Play size={14} className="fill-current" />
+                开始扫描可清理项
+              </button>
+            </div>
+          ) : loading ? (
             <div className="flex flex-col items-center justify-center h-48 text-slate-500 gap-2">
               <RefreshCw size={24} className="animate-spin text-emerald-500" />
               <span className="text-xs">正在根据内置规则库扫描 C 盘常见应用与系统缓存...</span>
@@ -218,41 +245,55 @@ export const CleanerView: React.FC = () => {
                   key={item.path}
                   onClick={() => toggleSelect(item.path, item.risk)}
                   className={`flex items-center justify-between px-4 py-3 cursor-pointer transition select-none ${
-                    checked ? "bg-emerald-950/15" : "hover:bg-slate-800/30"
+                    checked ? "bg-emerald-950/20" : "hover:bg-slate-800/40"
                   } ${isDanger ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
-                  <div className="flex items-center gap-3 flex-1 min-w-0 pr-4">
+                  <div className="flex items-center gap-3">
                     <input
                       type="checkbox"
                       checked={checked}
                       disabled={isDanger}
-                      onChange={() => {}}
-                      className="accent-emerald-500 rounded cursor-pointer"
+                      onChange={() => toggleSelect(item.path, item.risk)}
+                      className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer"
                     />
-                    <div className="min-w-0">
+                    <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-200">{item.name}</span>
+                        <span className="font-semibold text-slate-200 text-xs">{item.name}</span>
+                        <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">
+                          {item.category}
+                        </span>
                         {item.risk === "safe" && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            🟢 安全可删
+                          <span className="text-[10px] bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 px-1.5 py-0.5 rounded">
+                            🟢 安全
                           </span>
                         )}
                         {item.risk === "caution" && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                            🟡 谨慎清理
+                          <span className="text-[10px] bg-amber-950/80 text-amber-400 border border-amber-800/60 px-1.5 py-0.5 rounded">
+                            🟡 谨慎
+                          </span>
+                        )}
+                        {item.risk === "danger" && (
+                          <span className="text-[10px] bg-rose-950/80 text-rose-400 border border-rose-800/60 px-1.5 py-0.5 rounded">
+                            🔴 高危保护
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400 font-mono truncate mt-0.5" title={item.path}>
+                      <div className="text-[11px] text-slate-400 font-mono mt-0.5 truncate max-w-xl" title={item.path}>
                         {item.path}
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">{item.riskNote}</p>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {item.riskNote}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="text-right shrink-0">
-                    <div className="text-xs font-mono font-bold text-slate-200">{formatBytes(item.bytes)}</div>
-                    <div className="text-[10px] text-slate-500">{item.fileCount.toLocaleString()} 个文件</div>
+                  <div className="text-right">
+                    <div className="font-mono text-emerald-400 font-bold text-xs">
+                      {formatBytes(item.bytes)}
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-mono">
+                      约 {item.fileCount} 个文件
+                    </div>
                   </div>
                 </div>
               );
@@ -260,19 +301,20 @@ export const CleanerView: React.FC = () => {
           )}
         </div>
 
-        {/* 底部清理操作栏 */}
-        <div className="p-3 bg-slate-900 border-t border-slate-800 flex justify-between items-center">
-          <div className="text-xs text-slate-400 flex items-center gap-1.5">
-            <Info size={14} className="text-blue-400" />
-            <span>清理过程中若遇到被打开软件锁定的文件，将自动跳过，保障系统稳定</span>
-          </div>
+        {/* 底部操作工具栏 */}
+        <div className="p-3 bg-slate-950 border-t border-slate-800 flex justify-between items-center">
+          <span className="text-xs text-slate-500">
+            {selectedPaths.size > 0
+              ? `已选中 ${selectedPaths.size} 项，共 ${formatBytes(totalSelectedBytes)}`
+              : "请勾选需要清理的目录"}
+          </span>
 
           <button
             onClick={handleClean}
             disabled={selectedPaths.size === 0 || cleaning}
-            className="px-6 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 rounded-lg text-xs font-bold text-white shadow-lg flex items-center gap-2 transition"
+            className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg shadow-lg shadow-emerald-900/30 transition"
           >
-            <Trash2 size={16} />
+            <Trash2 size={15} />
             {cleaning ? "正在清理中..." : `立即安全清理 (${formatBytes(totalSelectedBytes)})`}
           </button>
         </div>
