@@ -24,6 +24,8 @@ export interface FileNode {
   migratable: boolean;
   isHeuristic: boolean;
   hasChildren: boolean;
+  modifiedTime?: string;
+  daysSinceModified?: number;
 }
 
 export interface ScanProgressEvent {

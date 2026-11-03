@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { HardDrive, Sparkles, FolderSync, Link as LinkIcon, Sliders, ShieldAlert, Layers, Copy } from "lucide-react";
+import { HardDrive, Sparkles, FolderSync, Link as LinkIcon, Sliders, ShieldAlert, Layers, Copy, LayoutGrid } from "lucide-react";
 import { ExplorerView } from "./pages/ExplorerView";
+import { TreemapView } from "./pages/TreemapView";
 import { CleanerView } from "./pages/CleanerView";
 import { MigratorView } from "./pages/MigratorView";
 import { LinksView } from "./pages/LinksView";
@@ -11,7 +12,7 @@ import { DuplicatesView } from "./pages/DuplicatesView";
 import { DriveInfo } from "./types";
 import { formatBytes } from "./utils";
 
-type Tab = "explorer" | "big_files" | "duplicates" | "cleaner" | "migrator" | "links" | "settings";
+type Tab = "explorer" | "treemap" | "big_files" | "duplicates" | "cleaner" | "migrator" | "links" | "settings";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("explorer");
@@ -98,6 +99,18 @@ export default function App() {
             >
               <HardDrive size={16} />
               磁盘与目录透视分析
+            </button>
+
+            <button
+              onClick={() => setActiveTab("treemap")}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
+                activeTab === "treemap"
+                  ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-cyan-600/30"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+              }`}
+            >
+              <LayoutGrid size={16} />
+              C 盘空间星系图 (Treemap)
             </button>
 
             <button
@@ -197,6 +210,9 @@ export default function App() {
       <main className="flex-1 flex flex-col min-w-0 bg-slate-950">
         {activeTab === "explorer" && (
           <ExplorerView onNavigateToMigrate={handleNavigateToMigrate} />
+        )}
+        {activeTab === "treemap" && (
+          <TreemapView onNavigateToMigrate={handleNavigateToMigrate} />
         )}
         {activeTab === "big_files" && <BigFilesView />}
         {activeTab === "duplicates" && <DuplicatesView />}

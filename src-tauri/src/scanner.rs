@@ -9,6 +9,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::SystemTime;
+use chrono::{DateTime, Local};
 use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
 
@@ -31,6 +33,8 @@ pub struct FileNode {
     pub migratable: bool,
     pub is_heuristic: bool,
     pub has_children: bool,
+    pub modified_time: Option<String>,
+    pub days_since_modified: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -172,6 +176,17 @@ pub fn scan_dir_level_progressive(
             false
         };
 
+        let (modified_time, days_since_modified) = if let Ok(mod_time) = meta.modified() {
+            let dt: DateTime<Local> = mod_time.into();
+            let days = SystemTime::now()
+                .duration_since(mod_time)
+                .map(|d| (d.as_secs() / 86400) as u32)
+                .unwrap_or(0);
+            (Some(dt.format("%Y-%m-%d %H:%M").to_string()), Some(days))
+        } else {
+            (None, None)
+        };
+
         let node = FileNode {
             name,
             path: p.to_string_lossy().to_string(),
@@ -187,6 +202,8 @@ pub fn scan_dir_level_progressive(
             migratable: matched.as_ref().map(|m| m.migratable).unwrap_or(is_dir && !is_link),
             is_heuristic: matched.as_ref().map(|m| m.is_heuristic).unwrap_or(false),
             has_children,
+            modified_time,
+            days_since_modified,
         };
 
         // 立即渐进式广播此节点
@@ -222,6 +239,8 @@ pub fn scan_dir_level_progressive(
             migratable: false,
             is_heuristic: false,
             has_children: false,
+            modified_time: None,
+            days_since_modified: None,
         },
         is_done: true,
     });
