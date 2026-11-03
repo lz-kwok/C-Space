@@ -1,5 +1,6 @@
 //! Tauri 命令注册与主入口
 
+mod analyzer;
 mod cleaner;
 mod ledger;
 mod links;
@@ -8,18 +9,19 @@ mod rules;
 mod scanner;
 mod winapi;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 
+use analyzer::{BigFileInfo, DuplicateGroup};
 use cleaner::{clean_targets, CleanItemSummary, CleanResult};
-use ledger::{load_ledger, load_settings, save_settings, AppSettings, LinkRecord};
+use ledger::{load_settings, save_settings, AppSettings};
 use links::{list_all_links, manual_create_link, remove_link, LinkDetail};
 use migrator::{execute_migration, precheck_migration, rollback_migration, MigrateCandidate, MigratePrecheck};
-use rules::{get_all_rules, get_clean_targets, get_migrate_targets, load_rules, match_path, ResolvedTarget, Rule};
+use rules::{get_all_rules, get_clean_targets, get_migrate_targets, load_rules, ResolvedTarget, Rule};
 use scanner::{scan_dir_level_progressive, FileNode, ScanContext};
-use winapi::{is_elevated, kill_process, list_drives, relaunch_as_admin, DriveInfo, ProcInfo};
+use winapi::{is_elevated, kill_process, list_drives, relaunch_as_admin, DriveInfo};
 
 #[tauri::command]
 fn check_elevation() -> bool {
@@ -205,6 +207,60 @@ fn update_settings(settings: AppSettings) -> Result<(), String> {
     save_settings(&settings)
 }
 
+#[tauri::command]
+fn get_big_files(
+    app: AppHandle,
+    min_bytes: u64,
+    scan_windows: bool,
+    state: State<'_, ScanContext>,
+) -> Vec<BigFileInfo> {
+    state.cancel_flag.store(false, Ordering::Relaxed);
+    analyzer::scan_big_files(&app, min_bytes, scan_windows, &state.cancel_flag)
+}
+
+#[tauri::command]
+fn get_duplicate_files(
+    app: AppHandle,
+    min_bytes: u64,
+    target_dirs: Vec<String>,
+    state: State<'_, ScanContext>,
+) -> Vec<DuplicateGroup> {
+    state.cancel_flag.store(false, Ordering::Relaxed);
+    analyzer::scan_duplicate_files(&app, min_bytes, target_dirs, &state.cancel_flag)
+}
+
+#[tauri::command]
+fn replace_dup_with_link(
+    original_path: String,
+    duplicate_path: String,
+    link_type: String,
+) -> Result<(), String> {
+    analyzer::replace_duplicate_with_link(&original_path, &duplicate_path, &link_type)
+}
+
+#[tauri::command]
+fn trash_file(file_path: String) -> Result<(), String> {
+    let p = Path::new(&file_path);
+    if !p.exists() {
+        return Err("目标文件不存在".into());
+    }
+    trash::delete(p).map_err(|e| format!("移入回收站失败: {}", e))
+}
+
+#[tauri::command]
+fn open_in_explorer(path: String) -> Result<(), String> {
+    use std::process::Command;
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err("文件或路径不存在".into());
+    }
+    Command::new("explorer")
+        .args(["/select,", &path])
+        .spawn()
+        .map_err(|e| format!("打开资源管理器失败: {}", e))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     load_rules();
@@ -239,6 +295,11 @@ pub fn run() {
             delete_link,
             get_settings,
             update_settings,
+            get_big_files,
+            get_duplicate_files,
+            replace_dup_with_link,
+            trash_file,
+            open_in_explorer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running C-Space tauri application");

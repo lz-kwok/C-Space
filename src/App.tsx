@@ -1,15 +1,17 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { HardDrive, Sparkles, FolderSync, Link as LinkIcon, Sliders, ShieldAlert } from "lucide-react";
+import { HardDrive, Sparkles, FolderSync, Link as LinkIcon, Sliders, ShieldAlert, Layers, Copy } from "lucide-react";
 import { ExplorerView } from "./pages/ExplorerView";
 import { CleanerView } from "./pages/CleanerView";
 import { MigratorView } from "./pages/MigratorView";
 import { LinksView } from "./pages/LinksView";
 import { SettingsView } from "./pages/SettingsView";
+import { BigFilesView } from "./pages/BigFilesView";
+import { DuplicatesView } from "./pages/DuplicatesView";
 import { DriveInfo } from "./types";
 import { formatBytes } from "./utils";
 
-type Tab = "explorer" | "cleaner" | "migrator" | "links" | "settings";
+type Tab = "explorer" | "big_files" | "duplicates" | "cleaner" | "migrator" | "links" | "settings";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("explorer");
@@ -99,6 +101,30 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab("big_files")}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
+                activeTab === "big_files"
+                  ? "bg-amber-600 text-white shadow-lg shadow-amber-600/30"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+              }`}
+            >
+              <Layers size={16} />
+              大文件扫描与定位
+            </button>
+
+            <button
+              onClick={() => setActiveTab("duplicates")}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
+                activeTab === "duplicates"
+                  ? "bg-cyan-600 text-white shadow-lg shadow-cyan-600/30"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+              }`}
+            >
+              <Copy size={16} />
+              重复文件两阶段比对
+            </button>
+
+            <button
               onClick={() => setActiveTab("cleaner")}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
                 activeTab === "cleaner"
@@ -172,6 +198,8 @@ export default function App() {
         {activeTab === "explorer" && (
           <ExplorerView onNavigateToMigrate={handleNavigateToMigrate} />
         )}
+        {activeTab === "big_files" && <BigFilesView />}
+        {activeTab === "duplicates" && <DuplicatesView />}
         {activeTab === "cleaner" && <CleanerView />}
         {activeTab === "migrator" && (
           <MigratorView initialSourcePath={migrateTargetPath} />

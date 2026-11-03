@@ -136,3 +136,40 @@ export interface Rule {
   processes: string[];
 }
 
+export type BigFileCategory = "disk_image" | "media" | "model" | "archive" | "executable" | "database" | "other";
+
+export interface BigFileInfo {
+  name: string;
+  path: string;
+  size: number;
+  category: BigFileCategory | string;
+  extension: string;
+  modifiedTime: string;
+  isReadOnly: boolean;
+}
+
+export interface DuplicateFileItem {
+  name: string;
+  path: string;
+  size: number;
+  modifiedTime: string;
+  isPrimary: boolean;
+}
+
+export interface DuplicateGroup {
+  groupId: string;
+  hash: string;
+  sizeEach: number;
+  wastedBytes: number;
+  files: DuplicateFileItem[];
+}
+
+export interface ScanStatusEvent {
+  taskType: "big_file" | "dup_scan" | string;
+  currentPath: string;
+  scannedFiles: number;
+  message: string;
+  isDone: boolean;
+}
+
+

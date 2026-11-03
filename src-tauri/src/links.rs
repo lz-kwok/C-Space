@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use chrono::Local;
 
 use crate::ledger::{add_link_record, load_ledger, remove_link_record, LinkRecord};

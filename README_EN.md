@@ -39,7 +39,20 @@ During prolonged use of Windows systems, the system C-drive frequently runs low 
 - **Ultra-Low Memory Streaming Scan**: Employs streaming iterators (`walkdir`) with $O(1)$ constant memory overhead, while strictly skipping Reparse Points (Junctions / Symlinks) to prevent cross-drive double-counting and circular loops.
 - **Progressive UI Updates**: Emits scanning progress asynchronously node-by-node; results appear on the screen immediately without waiting for the full disk scan to finish.
 
-### 2. 🧹 Targeted & Safe Smart Cleanup
+### 2. 📦 Big Files Deep Scanner & Locator
+- **Configurable Thresholds**: Quickly discovers massive files matching ≥50MB, ≥100MB, ≥500MB, ≥1GB, or ≥5GB.
+- **Smart Categorization**: Categorizes discovered files into Virtual Machine Disks (VHDX/VMDK/ISO), AI Weights/Models (GGUF/Safetensors/Bin/Pt), Media (Video/Audio), Archives (Zip/7z/Rar), Executables/DLLs, and Database Backups.
+- **Direct Actions**: Open directly in Windows File Explorer (`/select`), copy paths, or move safely to the Recycle Bin.
+
+### 3. 👯 Duplicate Files Multi-Stage Hash Analysis & Hardlink Replacement
+- **3-Stage Progressive Pipeline**:
+  1. *Phase 1*: Exact byte size grouping to instantly filter out unique files.
+  2. *Phase 2*: Head 8KB + Tail 8KB quick sample hashing for fast candidate matching.
+  3. *Phase 3*: Streaming SHA-256 full content verification (100% false-positive free).
+- **Smart Pre-selection**: One-click "Keep Newest", "Keep Oldest", or "Keep Shortest Path".
+- **NTFS Hardlink Deduplication**: Instead of purely deleting duplicates, users can replace duplicate copies with **NTFS Hardlinks pointing to the original file**. Reclaims disk space immediately while maintaining full software compatibility and file access across all original paths!
+
+### 4. 🧹 Targeted & Safe Smart Cleanup
 - **Real-Time Progress Streaming**: Emits live progress events (`clean-progress`) showing current file path, freed disk space, deleted count, and percentage completion.
 - **3-Tier Risk Guard**:
   - 🟢 **Safe**: Temporary caches, crash dumps, and obsolete installers that can be cleared safely.
@@ -47,13 +60,13 @@ During prolonged use of Windows systems, the system C-drive frequently runs low 
   - 🔴 **Danger**: Critical system binaries and user documents that are strictly protected by backend execution blocks.
 - **Automatic Lock Bypass**: Safely skips files locked by active processes to preserve system stability and writes an audit log to disk.
 
-### 3. 🚚 AppData Zero-Loss Migration
+### 5. 🚚 AppData Zero-Loss Migration
 - **Smart Recommendation Hub**: Scans for large candidate folders in `AppData` and allows users to load migration plans with a single click.
 - **Native Directory Junctions (`mklink /J`)**: Reroutes filesystem I/O transparently at the NTFS kernel layer.
 - **Process Lock Interceptor (Restart Manager API)**: Detects running processes locking target files and offers one-click termination before migration begins.
 - **Atomic Transactional Rollback**: Follows a strict 5-step pipeline: "Precheck ➔ Physical Copy ➔ Data Verification ➔ Rename Backup ➔ Create Junction ➔ Space Reclaim". Any failure triggers immediate automatic rollback.
 
-### 4. 🔗 Link Lifecycle & Ledger Management
+### 6. 🔗 Link Lifecycle & Ledger Management
 - **Centralized Ledger**: Tracks all managed links, alerts users to broken links (missing targets), and supports one-click safe restoration back to the C-drive.
 - **Custom Mapping Wizard**: Guides advanced users through creating Directory Junctions (`mklink /J`), Directory Symlinks (`mklink /D`), File Symlinks (`mklink`), and Hardlinks.
 
