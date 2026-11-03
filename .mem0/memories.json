@@ -1,0 +1,48 @@
+{
+  "version": "1.0.0",
+  "projectId": "c-space",
+  "updatedAt": "2026-11-03T17:08:00+08:00",
+  "memories": [
+    {
+      "id": "mem_001",
+      "category": "user_preferences",
+      "content": "用户倾向使用本地规则库+启发式特征识别，不依赖外部 AI API 即可快速识别 C 盘各目录用途与风险。"
+    },
+    {
+      "id": "mem_002",
+      "category": "user_preferences",
+      "content": "底层迁移方案要求采用物理复制后原位置建立目录联接(Junction / mklink /J)，实现软件无感并保证后续缓存写入新盘；同时提供独立的软链接生命周期管理面板。"
+    },
+    {
+      "id": "mem_003",
+      "category": "system_safety",
+      "content": "迁移过程采用预检拦截+事务机制：复制、校验、备份、建链接、删备份；使用 Restart Manager API 检测文件占用并支持一键结束进程；任一步骤出错自动回滚。"
+    },
+    {
+      "id": "mem_004",
+      "category": "system_safety",
+      "content": "清理采用三级风险标签(安全/谨慎/高危)；后端对核心系统目录和个人重要数据做物理拦截禁止删除；支持回收站与永久删除双模式并推送实时进度。"
+    },
+    {
+      "id": "mem_005",
+      "category": "performance",
+      "content": "扫描过程采用 walkdir 流式迭代器优化，O(1) 内存开销；所有扫描和清理均严格识别并穿透跳过软链接/Junction，禁止跟随以避免循环与跨卷重复计费。"
+    },
+    {
+      "id": "mem_006",
+      "category": "ui_ux",
+      "content": "Windows 任务栏图标需要在 Tauri 的 setup 生命周期中通过 from_app_icon_resource(256) 显式调用 set_icon 才能在 Dev 模式下正确呈现。"
+    },
+    {
+      "id": "mem_007",
+      "category": "ui_ux",
+      "content": "AppData 搬家模块必须提供智能卡片推荐面板，自动探查已安装且体积庞大的常用应用目录，支持一键载入源路径并自动规划 Vault 目标存储路径。"
+    },
+    {
+      "id": "mem_008",
+      "category": "vcs",
+      "content": "项目代码仓库已初始化，远程分支为 https://github.com/lz-kwok/C-Space.git (main 分支)。"
+    }
+  ]
+}
+

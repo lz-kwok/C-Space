@@ -132,3 +132,4 @@ C-Space/
     ├── Cargo.toml                # Rust crate definitions
     └── tauri.conf.json           # Tauri v2 configuration
 ```
+
