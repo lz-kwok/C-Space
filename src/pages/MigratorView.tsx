@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { CheckCircle2, AlertOctagon, RefreshCw, FolderOutput, ShieldAlert, Cpu, Sparkles, Check } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { CheckCircle2, AlertOctagon, RefreshCw, FolderOutput, ShieldAlert, Cpu, Sparkles, Check, FolderOpen } from "lucide-react";
 import { DriveInfo, MigrateCandidate, MigratePrecheck, MigrateProgress, ProcInfo } from "../types";
 import { formatBytes } from "../utils";
 
@@ -57,6 +58,42 @@ export const MigratorView: React.FC<Props> = ({ initialSourcePath }) => {
       unlisten.then((f) => f());
     };
   }, [sourcePath]);
+
+  const handleBrowseSource = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "选择待搬迁的源目录",
+      });
+      if (selected && typeof selected === "string") {
+        setSourcePath(selected);
+        const nonCDrives = drives.filter((d) => !d.letter.toLowerCase().startsWith("c"));
+        if (nonCDrives.length > 0) {
+          const best = nonCDrives.sort((a, b) => b.free - a.free)[0];
+          const sub = selected.replace(/^[a-zA-Z]:\\/, "");
+          setTargetPath(`${best.letter}:\\C-SpaceVault\\${sub}`);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleBrowseTarget = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "选择目标磁盘物理存储目录",
+      });
+      if (selected && typeof selected === "string") {
+        setTargetPath(selected);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const selectCandidate = (item: MigrateCandidate) => {
     setSourcePath(item.path);
@@ -206,9 +243,19 @@ export const MigratorView: React.FC<Props> = ({ initialSourcePath }) => {
 
         <div className="grid grid-cols-2 gap-4 pt-1">
           <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-              C 盘待搬迁源目录 (Source)
-            </label>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="text-xs font-semibold text-slate-300">
+                C 盘待搬迁源目录 (Source)
+              </label>
+              <button
+                type="button"
+                onClick={handleBrowseSource}
+                className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition"
+              >
+                <FolderOpen size={12} />
+                <span>浏览选择...</span>
+              </button>
+            </div>
             <input
               type="text"
               value={sourcePath}
@@ -219,9 +266,19 @@ export const MigratorView: React.FC<Props> = ({ initialSourcePath }) => {
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-              目标磁盘物理存储路径 (Vault)
-            </label>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="text-xs font-semibold text-slate-300">
+                目标磁盘物理存储路径 (Vault)
+              </label>
+              <button
+                type="button"
+                onClick={handleBrowseTarget}
+                className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 transition"
+              >
+                <FolderOpen size={12} />
+                <span>浏览选择...</span>
+              </button>
+            </div>
             <input
               type="text"
               value={targetPath}

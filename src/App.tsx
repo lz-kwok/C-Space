@@ -97,7 +97,7 @@ export default function App() {
               }`}
             >
               <HardDrive size={16} />
-              C 盘透视与用途识别
+              磁盘与目录透视分析
             </button>
 
             <button

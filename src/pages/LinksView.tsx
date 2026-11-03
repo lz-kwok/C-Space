@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Link2, Trash2, RotateCcw, Plus, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { Link2, Trash2, RotateCcw, Plus, AlertTriangle, CheckCircle, RefreshCw, FolderOpen } from "lucide-react";
 import { LinkDetail } from "../types";
 
 export const LinksView: React.FC = () => {
@@ -209,7 +210,20 @@ export const LinksView: React.FC = () => {
 
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-slate-400 block mb-1">源链接虚拟路径 (即将在 C 盘或原位置创建的软链接)</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-xs text-slate-400">源链接虚拟路径 (即将在 C 盘或原位置创建的软链接)</label>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const sel = await open({ directory: true, multiple: false, title: "选择源虚拟路径所在目录" });
+                      if (sel && typeof sel === "string") setSrcPath(sel);
+                    }}
+                    className="flex items-center gap-1 text-[11px] text-purple-400 hover:text-purple-300"
+                  >
+                    <FolderOpen size={12} />
+                    <span>浏览...</span>
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={srcPath}
@@ -220,7 +234,20 @@ export const LinksView: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-xs text-slate-400 block mb-1">目标实际路径 (在其他磁盘已存在的实际文件夹或文件)</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-xs text-slate-400">目标实际路径 (在其他磁盘已存在的实际文件夹或文件)</label>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const sel = await open({ directory: true, multiple: false, title: "选择目标物理目录" });
+                      if (sel && typeof sel === "string") setTgtPath(sel);
+                    }}
+                    className="flex items-center gap-1 text-[11px] text-purple-400 hover:text-purple-300"
+                  >
+                    <FolderOpen size={12} />
+                    <span>浏览...</span>
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={tgtPath}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   Search,
   FolderOpen,
@@ -18,8 +19,11 @@ import {
   Binary,
   Layers,
   StopCircle,
+  Plus,
+  X,
+  Folder,
 } from "lucide-react";
-import { BigFileInfo, ScanStatusEvent } from "../types";
+import { BigFileInfo, DriveInfo, ScanStatusEvent } from "../types";
 import { formatBytes } from "../utils";
 
 const THRESHOLD_OPTIONS = [
@@ -68,7 +72,13 @@ const CATEGORY_MAP: Record<string, { label: string; icon: React.ReactNode; color
   },
 };
 
+type ScopeType = "preset_c" | "drive" | "custom";
+
 export const BigFilesView: React.FC = () => {
+  const [drives, setDrives] = useState<DriveInfo[]>([]);
+  const [scopeType, setScopeType] = useState<ScopeType>("preset_c");
+  const [selectedDrive, setSelectedDrive] = useState<string>("C");
+  const [customDirs, setCustomDirs] = useState<string[]>([]);
   const [minBytes, setMinBytes] = useState<number>(100 * 1024 * 1024);
   const [scanWindows, setScanWindows] = useState<boolean>(false);
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -81,6 +91,13 @@ export const BigFilesView: React.FC = () => {
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
 
   useEffect(() => {
+    invoke<DriveInfo[]>("get_drives").then((res) => {
+      setDrives(res);
+      if (res.length > 0) {
+        setSelectedDrive(res[0].letter);
+      }
+    });
+
     const unlisten = listen<ScanStatusEvent>("big-file-scan-progress", (event) => {
       setScanStatus(event.payload);
       if (event.payload.isDone) {
@@ -93,7 +110,39 @@ export const BigFilesView: React.FC = () => {
     };
   }, []);
 
+  const handleAddCustomDir = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "选择要扫描大文件的目录",
+      });
+      if (selected && typeof selected === "string") {
+        if (!customDirs.includes(selected)) {
+          setCustomDirs([...customDirs, selected]);
+        }
+      }
+    } catch (e) {
+      console.error("选择目录失败:", e);
+    }
+  };
+
+  const handleRemoveCustomDir = (pathToRemove: string) => {
+    setCustomDirs(customDirs.filter((p) => p !== pathToRemove));
+  };
+
   const handleStartScan = async () => {
+    let targetDirs: string[] | null = null;
+    if (scopeType === "drive") {
+      targetDirs = [`${selectedDrive}:\\`];
+    } else if (scopeType === "custom") {
+      if (customDirs.length === 0) {
+        alert("请先点击「添加目录」选择至少一个待扫描的目录！");
+        return;
+      }
+      targetDirs = customDirs;
+    }
+
     setIsScanning(true);
     setFiles([]);
     setSelectedPaths(new Set());
@@ -101,7 +150,7 @@ export const BigFilesView: React.FC = () => {
       taskType: "big_file",
       currentPath: "正在初始化扫描引擎...",
       scannedFiles: 0,
-      message: "准备扫描用户及系统驱动器...",
+      message: "准备扫描指定目标...",
       isDone: false,
     });
 
@@ -109,6 +158,7 @@ export const BigFilesView: React.FC = () => {
       const results = await invoke<BigFileInfo[]>("get_big_files", {
         minBytes,
         scanWindows,
+        targetDirs,
       });
       setFiles(results);
     } catch (e) {
@@ -182,7 +232,11 @@ export const BigFilesView: React.FC = () => {
       }
     }
 
-    setFiles((prev) => prev.filter((f) => !selectedPaths.has(f.path) || errors.some(err => err.startsWith(f.path))));
+    setFiles((prev) =>
+      prev.filter(
+        (f) => !selectedPaths.has(f.path) || errors.some((err) => err.startsWith(f.path))
+      )
+    );
     setSelectedPaths(new Set());
 
     if (errors.length > 0) {
@@ -234,81 +288,177 @@ export const BigFilesView: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden p-6 space-y-4">
       {/* 头部标题与控制栏 */}
-      <div className="flex justify-between items-center bg-slate-900 border border-slate-800 rounded-2xl p-4">
-        <div>
-          <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-            <Layers className="text-blue-500" size={20} />
-            大文件深度扫描与定位
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            快速挖掘占用 GB 级别的虚拟机镜像、AI权重、高清音视频、大型压缩包等，支持直接安全移入回收站。
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* Windows 目录开关 */}
-          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-slate-950/60 px-3 py-2 rounded-xl border border-slate-800 hover:border-slate-700 transition">
-            <input
-              type="checkbox"
-              checked={scanWindows}
-              onChange={(e) => setScanWindows(e.target.checked)}
-              disabled={isScanning}
-              className="rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0"
-            />
-            <span>包含 Windows 目录</span>
-          </label>
-
-          {/* 阈值选择 */}
-          <div className="flex items-center gap-1.5 bg-slate-950/60 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
-            <SlidersHorizontal size={13} className="text-slate-400" />
-            <select
-              value={minBytes}
-              onChange={(e) => setMinBytes(Number(e.target.value))}
-              disabled={isScanning}
-              className="bg-transparent text-slate-200 outline-none text-xs cursor-pointer"
-            >
-              {THRESHOLD_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value} className="bg-slate-900 text-slate-200">
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+              <Layers className="text-amber-500" size={20} />
+              大文件深度扫描与定位
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              支持按磁盘或自定义目录精确挖掘 GB 级大文件，直观归类虚拟机、AI权重、高清影音与压缩包。
+            </p>
           </div>
 
-          {/* 扫描 / 取消按钮 */}
-          {isScanning ? (
+          <div className="flex items-center gap-3">
+            {/* 阈值选择 */}
+            <div className="flex items-center gap-1.5 bg-slate-950/60 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
+              <SlidersHorizontal size={13} className="text-slate-400" />
+              <span className="text-slate-400">大小过滤:</span>
+              <select
+                value={minBytes}
+                onChange={(e) => setMinBytes(Number(e.target.value))}
+                disabled={isScanning}
+                className="bg-transparent text-slate-200 outline-none text-xs cursor-pointer font-medium"
+              >
+                {THRESHOLD_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value} className="bg-slate-900 text-slate-200">
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 扫描 / 取消按钮 */}
+            {isScanning ? (
+              <button
+                onClick={handleCancelScan}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-xl text-xs font-semibold shadow-lg shadow-red-600/20 transition"
+              >
+                <StopCircle size={15} />
+                停止扫描
+              </button>
+            ) : (
+              <button
+                onClick={handleStartScan}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-amber-600/30 transition"
+              >
+                <RotateCw size={15} />
+                开始扫描大文件
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 扫描范围模式选择区 */}
+        <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-medium">扫描范围:</span>
+            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+              <button
+                onClick={() => setScopeType("preset_c")}
+                className={`px-3 py-1 rounded-lg font-medium transition ${
+                  scopeType === "preset_c"
+                    ? "bg-amber-600 text-white shadow"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                C 盘核心常用目录
+              </button>
+              <button
+                onClick={() => setScopeType("drive")}
+                className={`px-3 py-1 rounded-lg font-medium transition ${
+                  scopeType === "drive"
+                    ? "bg-amber-600 text-white shadow"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                选定指定磁盘
+              </button>
+              <button
+                onClick={() => setScopeType("custom")}
+                className={`px-3 py-1 rounded-lg font-medium transition ${
+                  scopeType === "custom"
+                    ? "bg-amber-600 text-white shadow"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                自定义目录 ({customDirs.length})
+              </button>
+            </div>
+          </div>
+
+          {/* 模式对应的附加控制 */}
+          {scopeType === "preset_c" && (
+            <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-slate-950/60 px-3 py-1.5 rounded-xl border border-slate-800 hover:border-slate-700 transition">
+              <input
+                type="checkbox"
+                checked={scanWindows}
+                onChange={(e) => setScanWindows(e.target.checked)}
+                disabled={isScanning}
+                className="rounded bg-slate-900 border-slate-700 text-amber-600 focus:ring-0"
+              />
+              <span>包含 C:\Windows 系统目录</span>
+            </label>
+          )}
+
+          {scopeType === "drive" && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-400">选择盘符:</span>
+              {drives.map((d) => (
+                <button
+                  key={d.letter}
+                  onClick={() => setSelectedDrive(d.letter)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition ${
+                    selectedDrive.toUpperCase() === d.letter.toUpperCase()
+                      ? "bg-amber-600 text-white border-amber-500 shadow"
+                      : "bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700"
+                  }`}
+                >
+                  {d.letter}: ({formatBytes(d.free)} 可用)
+                </button>
+              ))}
+            </div>
+          )}
+
+          {scopeType === "custom" && (
             <button
-              onClick={handleCancelScan}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-xl text-xs font-semibold shadow-lg shadow-red-600/20 transition"
+              onClick={handleAddCustomDir}
+              disabled={isScanning}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-medium transition"
             >
-              <StopCircle size={15} />
-              停止扫描
-            </button>
-          ) : (
-            <button
-              onClick={handleStartScan}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-blue-600/30 transition"
-            >
-              <RotateCw size={15} />
-              开始扫描大文件
+              <Plus size={13} />
+              浏览添加目录...
             </button>
           )}
         </div>
+
+        {/* 自定义目录标签列表 */}
+        {scopeType === "custom" && customDirs.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap pt-1">
+            <span className="text-[11px] text-slate-400">已选目录:</span>
+            {customDirs.map((dir) => (
+              <span
+                key={dir}
+                className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg text-xs font-mono text-slate-300"
+              >
+                <Folder size={12} className="text-amber-400" />
+                <span className="truncate max-w-xs">{dir}</span>
+                <button
+                  onClick={() => handleRemoveCustomDir(dir)}
+                  className="hover:text-red-400 ml-1 text-slate-500"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 实时进度提示条 */}
       {isScanning && scanStatus && (
-        <div className="bg-blue-950/40 border border-blue-800/60 rounded-xl p-3 flex items-center justify-between animate-pulse">
+        <div className="bg-amber-950/40 border border-amber-800/60 rounded-xl p-3 flex items-center justify-between animate-pulse">
           <div className="flex items-center gap-3">
-            <RotateCw size={16} className="text-blue-400 animate-spin" />
+            <RotateCw size={16} className="text-amber-400 animate-spin" />
             <div className="text-xs">
-              <span className="text-blue-200 font-semibold">{scanStatus.message}</span>
+              <span className="text-amber-200 font-semibold">{scanStatus.message}</span>
               <p className="text-[11px] text-slate-400 truncate max-w-xl font-mono mt-0.5">
                 {scanStatus.currentPath}
               </p>
             </div>
           </div>
-          <span className="text-xs text-blue-400 font-mono">
+          <span className="text-xs text-amber-400 font-mono">
             已检索 {scanStatus.scannedFiles} 项
           </span>
         </div>
@@ -324,7 +474,7 @@ export const BigFilesView: React.FC = () => {
                 onClick={() => setSelectedCategory("all")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
                   selectedCategory === "all"
-                    ? "bg-blue-600 text-white border-blue-500 shadow"
+                    ? "bg-amber-600 text-white border-amber-500 shadow"
                     : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200"
                 }`}
               >
@@ -360,7 +510,7 @@ export const BigFilesView: React.FC = () => {
                 placeholder="搜索文件名或路径..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
               />
             </div>
           </div>
@@ -371,7 +521,7 @@ export const BigFilesView: React.FC = () => {
               <span>显示 </span>
               <strong className="text-slate-200">{filteredFiles.length}</strong>
               <span> 个文件，合计占用 </span>
-              <strong className="text-blue-400">{formatBytes(totalFilteredBytes)}</strong>
+              <strong className="text-amber-400">{formatBytes(totalFilteredBytes)}</strong>
               {selectedPaths.size > 0 && (
                 <span className="ml-3 text-amber-400">
                   已勾选 {selectedPaths.size} 项（共 {formatBytes(totalSelectedBytes)}）
@@ -399,7 +549,7 @@ export const BigFilesView: React.FC = () => {
             <Layers size={44} className="text-slate-700 mb-3" />
             <h3 className="text-sm font-semibold text-slate-400">未扫描或未发现大文件</h3>
             <p className="text-xs text-slate-500 max-w-sm mt-1">
-              点击右上角「开始扫描大文件」，将自动流式检索系统中的高体量文件。
+              可选择 C 盘常用目录、特定磁盘（如 D: 或 E:）或添加自定义目录，点击「开始扫描大文件」进行检索。
             </p>
           </div>
         ) : (
@@ -415,7 +565,7 @@ export const BigFilesView: React.FC = () => {
                         selectedPaths.size === filteredFiles.length
                       }
                       onChange={toggleSelectAllFiltered}
-                      className="rounded bg-slate-900 border-slate-700 text-blue-600"
+                      className="rounded bg-slate-900 border-slate-700 text-amber-600"
                     />
                   </th>
                   <th className="py-2.5 px-3">文件名称 / 类别</th>
@@ -435,7 +585,7 @@ export const BigFilesView: React.FC = () => {
                     <tr
                       key={file.path}
                       className={`hover:bg-slate-800/40 transition ${
-                        isSelected ? "bg-blue-950/20" : ""
+                        isSelected ? "bg-amber-950/20" : ""
                       }`}
                     >
                       <td className="py-2.5 px-3 text-center">
@@ -443,7 +593,7 @@ export const BigFilesView: React.FC = () => {
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleSelect(file.path)}
-                          className="rounded bg-slate-900 border-slate-700 text-blue-600"
+                          className="rounded bg-slate-900 border-slate-700 text-amber-600"
                         />
                       </td>
 
@@ -470,7 +620,7 @@ export const BigFilesView: React.FC = () => {
                         </span>
                       </td>
 
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-400">
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-400">
                         {formatBytes(file.size)}
                       </td>
 

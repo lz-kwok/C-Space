@@ -81,21 +81,38 @@ pub fn scan_big_files(
     app: &AppHandle,
     min_bytes: u64,
     scan_windows_dir: bool,
+    target_dirs: Option<Vec<String>>,
     cancel: &Arc<AtomicBool>,
 ) -> Vec<BigFileInfo> {
     let mut results = Vec::new();
 
-    let sys_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".into());
-    let mut scan_roots = vec![
-        PathBuf::from(format!("{}\\Users", sys_drive)),
-        PathBuf::from(format!("{}\\ProgramData", sys_drive)),
-        PathBuf::from(format!("{}\\Program Files", sys_drive)),
-        PathBuf::from(format!("{}\\Program Files (x86)", sys_drive)),
-    ];
+    let scan_roots: Vec<PathBuf> = match target_dirs {
+        Some(dirs) if !dirs.is_empty() => dirs
+            .into_iter()
+            .map(|d| {
+                let s = d.trim();
+                if s.len() == 2 && s.ends_with(':') {
+                    PathBuf::from(format!("{}\\", s))
+                } else {
+                    PathBuf::from(s)
+                }
+            })
+            .collect(),
+        _ => {
+            let sys_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".into());
+            let mut roots = vec![
+                PathBuf::from(format!("{}\\Users", sys_drive)),
+                PathBuf::from(format!("{}\\ProgramData", sys_drive)),
+                PathBuf::from(format!("{}\\Program Files", sys_drive)),
+                PathBuf::from(format!("{}\\Program Files (x86)", sys_drive)),
+            ];
 
-    if scan_windows_dir {
-        scan_roots.push(PathBuf::from(format!("{}\\Windows", sys_drive)));
-    }
+            if scan_windows_dir {
+                roots.push(PathBuf::from(format!("{}\\Windows", sys_drive)));
+            }
+            roots
+        }
+    };
 
     let mut scanned_count = 0u64;
 
@@ -244,11 +261,21 @@ pub fn scan_duplicate_files(
     let mut scanned_count = 0u64;
 
     // 默认扫描用户主目录 (包括 Downloads, Desktop, Documents, AppData, 开发项目等)
-    let roots = if target_dirs.is_empty() {
+    let roots: Vec<PathBuf> = if target_dirs.is_empty() {
         let user_profile = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users".into());
         vec![PathBuf::from(user_profile)]
     } else {
-        target_dirs.into_iter().map(PathBuf::from).collect()
+        target_dirs
+            .into_iter()
+            .map(|d| {
+                let s = d.trim();
+                if s.len() == 2 && s.ends_with(':') {
+                    PathBuf::from(format!("{}\\", s))
+                } else {
+                    PathBuf::from(s)
+                }
+            })
+            .collect()
     };
 
     // Phase 1: 遍历并按照文件确切大小 (bytes) 聚合

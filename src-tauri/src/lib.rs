@@ -212,10 +212,11 @@ fn get_big_files(
     app: AppHandle,
     min_bytes: u64,
     scan_windows: bool,
+    target_dirs: Option<Vec<String>>,
     state: State<'_, ScanContext>,
 ) -> Vec<BigFileInfo> {
     state.cancel_flag.store(false, Ordering::Relaxed);
-    analyzer::scan_big_files(&app, min_bytes, scan_windows, &state.cancel_flag)
+    analyzer::scan_big_files(&app, min_bytes, scan_windows, target_dirs, &state.cancel_flag)
 }
 
 #[tauri::command]
