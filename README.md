@@ -13,7 +13,7 @@
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC.svg?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[English](./README_EN.md) · [简体中文](./README.md) · [架构设计文档](https://github.com/)
+[English](./README_EN.md) · [简体中文](./README.md) · [架构设计文档](./ARCHITECTURE.md)
 
 </div>
 

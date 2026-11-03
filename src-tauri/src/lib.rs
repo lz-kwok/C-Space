@@ -18,7 +18,7 @@ use ledger::{load_ledger, load_settings, save_settings, AppSettings, LinkRecord}
 use links::{list_all_links, manual_create_link, remove_link, LinkDetail};
 use migrator::{execute_migration, precheck_migration, rollback_migration, MigrateCandidate, MigratePrecheck};
 use rules::{get_all_rules, get_clean_targets, get_migrate_targets, load_rules, match_path, ResolvedTarget, Rule};
-use scanner::{scan_dir_level, FileNode, ScanContext};
+use scanner::{scan_dir_level_progressive, FileNode, ScanContext};
 use winapi::{is_elevated, kill_process, list_drives, relaunch_as_admin, DriveInfo, ProcInfo};
 
 #[tauri::command]
@@ -43,11 +43,14 @@ fn get_rules() -> Vec<Rule> {
 
 #[tauri::command]
 fn scan_directory(
+    app: AppHandle,
     path: String,
+    scan_id: Option<String>,
     state: State<'_, ScanContext>,
 ) -> Result<Vec<FileNode>, String> {
     state.cancel_flag.store(false, Ordering::Relaxed);
-    scan_dir_level(Path::new(&path), &state.cancel_flag)
+    let id = scan_id.unwrap_or_else(|| "default".into());
+    scan_dir_level_progressive(&app, Path::new(&path), &id, &state.cancel_flag)
 }
 
 #[tauri::command]

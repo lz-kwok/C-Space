@@ -26,6 +26,13 @@ export interface FileNode {
   hasChildren: boolean;
 }
 
+export interface ScanProgressEvent {
+  scanId: string;
+  parentPath: string;
+  node: FileNode;
+  isDone: boolean;
+}
+
 export interface CleanItemSummary {
   path: string;
   name: string;

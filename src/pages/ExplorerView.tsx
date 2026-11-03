@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Folder, HardDrive, RefreshCw, AlertTriangle, ArrowRight, CornerDownRight, ExternalLink } from "lucide-react";
-import { FileNode } from "../types";
+import { FileNode, ScanProgressEvent } from "../types";
 import { formatBytes } from "../utils";
 
 interface Props {
@@ -14,17 +15,52 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   const [nodes, setNodes] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null);
+  const activeScanIdRef = useRef<string>("");
+
+  useEffect(() => {
+    // 监听渐进式扫描推送事件
+    const unlisten = listen<ScanProgressEvent>("scan-node-found", (event) => {
+      const payload = event.payload;
+      if (payload.scanId !== activeScanIdRef.current) return;
+
+      if (payload.isDone) {
+        setLoading(false);
+        return;
+      }
+
+      setNodes((prev) => {
+        // 去重并按大小实时排队插入
+        const filtered = prev.filter((n) => n.path !== payload.node.path);
+        const updated = [...filtered, payload.node];
+        updated.sort((a, b) => b.size - a.size);
+        return updated;
+      });
+    });
+
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
 
   const fetchDir = async (path: string) => {
+    const scanId = `scan-${Date.now()}`;
+    activeScanIdRef.current = scanId;
     setLoading(true);
+    setNodes([]); // 清空上一层，准备渐进式填充
+    setSelectedNode(null);
+
     try {
-      const res = await invoke<FileNode[]>("scan_directory", { path });
-      setNodes(res);
-      setSelectedNode(null);
+      const res = await invoke<FileNode[]>("scan_directory", { path, scanId });
+      // 兜底全量同步
+      if (activeScanIdRef.current === scanId) {
+        setNodes(res);
+      }
     } catch (e) {
-      console.error(e);
+      console.error("扫描目录异常:", e);
     } finally {
-      setLoading(false);
+      if (activeScanIdRef.current === scanId) {
+        setLoading(false);
+      }
     }
   };
 
@@ -109,19 +145,29 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
-            {loading ? (
+            {loading && nodes.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-48 text-slate-500 gap-2">
                 <RefreshCw size={24} className="animate-spin text-blue-500" />
-                <span className="text-xs">正在多线程穿透统计目录大小与识别用途...</span>
+                <span className="text-xs">正在流式探测目录大小与识别用途...</span>
               </div>
             ) : nodes.length === 0 ? (
               <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
                 当前目录下为空或无访问权限
               </div>
             ) : (
-              nodes.map((node) => {
-                const percent = totalDirSize > 0 ? (node.size / totalDirSize) * 100 : 0;
-                const isSelected = selectedNode?.path === node.path;
+              <>
+                {loading && (
+                  <div className="flex items-center justify-between px-4 py-2 bg-blue-950/20 border-b border-blue-900/30 text-xs text-blue-300">
+                    <span className="flex items-center gap-2">
+                      <RefreshCw size={12} className="animate-spin text-blue-400" />
+                      正在渐进式读取更多目录项 (已发现 {nodes.length} 项)...
+                    </span>
+                    <span className="text-[10px] text-blue-400/80">已扫描项已按体积排序显示</span>
+                  </div>
+                )}
+                {nodes.map((node) => {
+                  const percent = totalDirSize > 0 ? (node.size / totalDirSize) * 100 : 0;
+                  const isSelected = selectedNode?.path === node.path;
 
                 return (
                   <div
@@ -198,7 +244,8 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
                     </div>
                   </div>
                 );
-              })
+              })}
+              </>
             )}
           </div>
         </div>
