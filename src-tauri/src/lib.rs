@@ -1,4 +1,4 @@
-//! Tauri 命令注册与主入口
+﻿//! Tauri 命令注册与主入口
 
 mod analyzer;
 mod cleaner;
@@ -8,6 +8,7 @@ mod migrator;
 mod rules;
 mod scanner;
 mod winapi;
+mod mft;
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
