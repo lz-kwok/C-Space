@@ -21,6 +21,8 @@ import {
   MessageSquare,
   Building2,
   UserCheck,
+  Send,
+  FolderSearch,
 } from "lucide-react";
 import {
   SocialAppInfo,
@@ -31,6 +33,7 @@ import {
   ArchiveResult,
   SocialDuplicateGroup,
   DriveInfo,
+  SocialFolderDetail,
 } from "../types";
 import { formatBytes } from "../utils";
 
@@ -60,6 +63,9 @@ export const SocialSlimmerView: React.FC = () => {
   // 缓存清理状态
   const [isCleaningCache, setIsCleaningCache] = useState<boolean>(false);
   const [cacheCleanMsg, setCacheCleanMsg] = useState<string | null>(null);
+  // 文件夹作用深度语义分析
+  const [folderDetails, setFolderDetails] = useState<SocialFolderDetail[]>([]);
+  const [isLoadingFolders, setIsLoadingFolders] = useState<boolean>(false);
 
   // 初始化加载应用与磁盘
   useEffect(() => {
@@ -128,6 +134,7 @@ export const SocialSlimmerView: React.FC = () => {
 
       // 3. 扫描多群重复文件
       loadDuplicates(account.path);
+      loadFolderDetails(account.path);
     } catch (e) {
       console.error("扫描社交资产失败:", e);
     } finally {
@@ -158,6 +165,20 @@ export const SocialSlimmerView: React.FC = () => {
       console.error("扫描多群重复文件失败:", e);
     } finally {
       setIsScanningDups(false);
+    }
+  };
+
+  const loadFolderDetails = async (path: string) => {
+    setIsLoadingFolders(true);
+    try {
+      const details = await invoke<SocialFolderDetail[]>("analyze_social_folders", {
+        accountPath: path,
+      });
+      setFolderDetails(details);
+    } catch (e) {
+      console.error("深度解析文件夹作用失败:", e);
+    } finally {
+      setIsLoadingFolders(false);
     }
   };
 
@@ -298,6 +319,17 @@ export const SocialSlimmerView: React.FC = () => {
             >
               <Building2 size={14} className={selectedAppType === "wXWork" ? "text-cyan-200" : ""} />
               企业微信 (WXWork)
+            </button>
+            <button
+              onClick={() => handleSelectApp("dingTalk")}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-medium transition ${
+                selectedAppType === "dingTalk"
+                  ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-600/30 font-semibold"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Send size={14} className={selectedAppType === "dingTalk" ? "text-orange-200" : ""} />
+              钉钉 (DingTalk)
             </button>
             <button
               onClick={() => handleSelectApp("qQ")}
@@ -780,6 +812,90 @@ export const SocialSlimmerView: React.FC = () => {
           ) : (
             <div className="py-6 text-center text-xs text-slate-500">
               未检测到多群重复下载的冗余文件，或接收文件已全部保持单份状态。
+            </div>
+          )}
+        </div>
+        {/* 基础扫描：缓存文件夹作用深度语义分析表 */}
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div className="flex justify-between items-center flex-wrap gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <FolderSearch size={16} className="text-cyan-400" />
+                系统盘缓存深度扫描 · 文件夹真实作用与风险解析
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                基于系统盘对当前社交软件的底层目录树进行深度语义分析，解读每个子文件夹的业务作用与安全风险，杜绝盲目清理。
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-slate-400 font-mono">共解析出 {folderDetails.length} 个业务子目录</span>
+            </div>
+          </div>
+
+          {isLoadingFolders ? (
+            <div className="py-6 flex items-center justify-center gap-2 text-slate-400 text-xs">
+              <RefreshCw className="animate-spin text-cyan-400" size={16} />
+              正在逐级分析缓存目录业务语义与风险模型...
+            </div>
+          ) : folderDetails.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1">
+              {folderDetails.map((f, idx) => (
+                <div
+                  key={idx}
+                  className="bg-slate-950/70 border border-slate-800/90 hover:border-slate-700/90 rounded-xl p-3.5 space-y-2.5 transition flex flex-col justify-between"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs font-semibold text-slate-100 flex items-center gap-1.5 truncate max-w-[260px]">
+                        <FolderOpen size={13} className="text-cyan-400 shrink-0" />
+                        {f.folderName}
+                      </span>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded font-semibold shrink-0 ${
+                          f.riskLevel === "protected"
+                            ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                            : f.riskLevel === "safe"
+                            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                            : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                        }`}
+                      >
+                        {f.riskLevel === "protected" ? "🛡️ 核心受保护" : f.riskLevel === "safe" ? "0 风险可清" : "媒体/文档资产"}
+                      </span>
+                    </div>
+
+                    <div className="text-xs font-bold text-cyan-300 flex items-center gap-1">
+                      {f.purposeTitle}
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed bg-slate-900/60 p-2 rounded-lg border border-slate-800/60">
+                      {f.purposeDesc}
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
+                    <div className="font-mono text-slate-300">
+                      占用: <strong className="text-cyan-300">{formatBytes(f.size)}</strong> ({f.fileCount} 项)
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400 italic">
+                        {f.actionRecommendation}
+                      </span>
+                      <button
+                        onClick={() => handleOpenFolder(f.path)}
+                        className="p-1 text-slate-400 hover:text-cyan-300 transition"
+                        title="在资源管理器中打开"
+                      >
+                        <ExternalLink size={12} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-6 text-center text-xs text-slate-500">
+              请选择上方账号查看缓存目录深度解析
             </div>
           )}
         </div>

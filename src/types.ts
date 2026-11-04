@@ -174,7 +174,7 @@ export interface ScanStatusEvent {
   isDone: boolean;
 }
 
-export type SocialAppType = "weChat" | "wXWork" | "qQ";
+export type SocialAppType = "weChat" | "wXWork" | "dingTalk" | "qQ";
 
 export interface SocialAccountInfo {
   accountId: string;
@@ -228,4 +228,15 @@ export interface SocialDuplicateGroup {
   sizeEach: number;
   wastedBytes: number;
   files: string[];
+}
+
+export interface SocialFolderDetail {
+  path: string;
+  folderName: string;
+  size: number;
+  fileCount: number;
+  purposeTitle: string;
+  purposeDesc: string;
+  riskLevel: "safe" | "caution" | "protected" | string;
+  actionRecommendation: string;
 }
