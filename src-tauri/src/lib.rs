@@ -45,6 +45,32 @@ fn get_rules() -> Vec<Rule> {
 }
 
 #[tauri::command]
+fn scan_partition_mft(path: String) -> Result<Vec<FileNode>, String> {
+    let drive_letter = path
+        .chars()
+        .next()
+        .ok_or_else(|| "路径无效".to_string())?
+        .to_ascii_uppercase();
+
+    // 检查是否为 NTFS 格式
+    if !mft::is_ntfs_drive(drive_letter) {
+        return Err("NOT_NTFS".into());
+    }
+
+    // 检查是否有管理员权限
+    if !is_elevated() {
+        return Err("ADMIN_REQUIRED_FOR_NTFS".into());
+    }
+
+    mft::get_mft_directory_children(&path)
+}
+
+#[tauri::command]
+fn clear_mft_cache() {
+    mft::clear_mft_cache();
+}
+
+#[tauri::command]
 fn scan_directory(
     app: AppHandle,
     path: String,
@@ -302,6 +328,8 @@ pub fn run() {
             replace_dup_with_link,
             trash_file,
             open_in_explorer,
+            scan_partition_mft,
+            clear_mft_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running C-Space tauri application");
