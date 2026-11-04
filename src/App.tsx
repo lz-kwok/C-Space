@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { HardDrive, Sparkles, FolderSync, Link as LinkIcon, Sliders, ShieldAlert, Layers, Copy, Disc3 } from "lucide-react";
+import { HardDrive, Sparkles, MessageSquareText, FolderSync, Link as LinkIcon, Sliders, ShieldAlert, Layers, Copy, Disc3 } from "lucide-react";
 import { ExplorerView } from "./pages/ExplorerView";
 import { TreemapView } from "./pages/TreemapView";
 import { CleanerView } from "./pages/CleanerView";
@@ -9,10 +9,11 @@ import { LinksView } from "./pages/LinksView";
 import { SettingsView } from "./pages/SettingsView";
 import { BigFilesView } from "./pages/BigFilesView";
 import { DuplicatesView } from "./pages/DuplicatesView";
+import { SocialSlimmerView } from "./pages/SocialSlimmerView";
 import { DriveInfo } from "./types";
 import { formatBytes } from "./utils";
 
-type Tab = "explorer" | "treemap" | "big_files" | "duplicates" | "cleaner" | "migrator" | "links" | "settings";
+type Tab = "explorer" | "treemap" | "social" | "big_files" | "duplicates" | "cleaner" | "migrator" | "links" | "settings";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("explorer");
@@ -112,6 +113,22 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab("social")}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === "social"
+                  ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-600/30 font-bold"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                }`}
+            >
+              <div className="flex items-center gap-3">
+                <MessageSquareText size={16} className={activeTab === "social" ? "text-emerald-200" : "text-emerald-400"} />
+                <span>国民社交资产专治</span>
+              </div>
+              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-normal border border-emerald-500/30">
+                微信/QQ
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("big_files")}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === "big_files"
                   ? "bg-amber-600 text-white shadow-lg shadow-amber-600/30"
@@ -206,6 +223,7 @@ export default function App() {
         {activeTab === "treemap" && (
           <TreemapView onNavigateToMigrate={handleNavigateToMigrate} />
         )}
+        {activeTab === "social" && <SocialSlimmerView />}
         {activeTab === "big_files" && <BigFilesView />}
         {activeTab === "duplicates" && <DuplicatesView />}
         {activeTab === "cleaner" && <CleanerView />}

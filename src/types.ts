@@ -174,4 +174,58 @@ export interface ScanStatusEvent {
   isDone: boolean;
 }
 
+export type SocialAppType = "weChat" | "wXWork" | "qQ";
 
+export interface SocialAccountInfo {
+  accountId: string;
+  displayName: string;
+  path: string;
+  totalBytes: number;
+}
+
+export interface SocialAppInfo {
+  appType: SocialAppType;
+  name: string;
+  isInstalled: boolean;
+  dataRoot: string;
+  accounts: SocialAccountInfo[];
+}
+
+export interface SocialAssetSummary {
+  totalBytes: number;
+  cacheBytes: number;
+  cacheFiles: number;
+  videoBytes: number;
+  videoFiles: number;
+  imageBytes: number;
+  imageFiles: number;
+  fileBytes: number;
+  fileFiles: number;
+  protectedDbBytes: number;
+  protectedDbFiles: number;
+  cachePaths: string[];
+}
+
+export interface MediaArchiveItem {
+  path: string;
+  name: string;
+  size: number;
+  daysSinceModified: number;
+  month: string;
+}
+
+export interface ArchiveResult {
+  movedCount: number;
+  freedBytes: number;
+  failedCount: number;
+  errors: string[];
+}
+
+export interface SocialDuplicateGroup {
+  groupId: string;
+  hash: string;
+  name: string;
+  sizeEach: number;
+  wastedBytes: number;
+  files: string[];
+}
