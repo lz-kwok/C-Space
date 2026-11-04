@@ -17,7 +17,7 @@ import {
   Check,
   ChevronRight,
   Disc3,
-  LayoutGrid,
+  Globe2,
   Sparkles,
   Layers,
 } from "lucide-react";
@@ -25,13 +25,13 @@ import { DriveInfo, FileNode, ScanProgressEvent } from "../types";
 import { formatBytes } from "../utils";
 import {
   DisplayNode,
-  TreemapRect,
+  PlanetNode,
   SunburstSector,
   ColorMode,
   GalaxyViewMode,
   aggregateNodesForDisplay,
-  computeSquarifiedTreemap,
-  drawTreemapCell,
+  computePlanetarySystem,
+  drawPlanet,
   computeSunburstSectors,
   drawSunburstWheel,
   drawStarfield,
@@ -50,8 +50,8 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   const [loading, setLoading] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
 
-  // 视角与着色模式
-  const [viewMode, setViewMode] = useState<GalaxyViewMode>("sunburst");
+  // 视角与着色模式：默认为全新“星球图谱”
+  const [viewMode, setViewMode] = useState<GalaxyViewMode>("planet");
   const [colorMode, setColorMode] = useState<ColorMode>("category");
 
   const [selectedNode, setSelectedNode] = useState<DisplayNode | null>(null);
@@ -62,11 +62,11 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // 数据布局缓存 Ref
-  const treemapRectsRef = useRef<TreemapRect<DisplayNode>[]>([]);
+  const planetNodesRef = useRef<PlanetNode<DisplayNode>[]>([]);
   const sunburstSectorsRef = useRef<SunburstSector<DisplayNode>[]>([]);
   const activeScanIdRef = useRef<string>("");
 
-  // 节流批处理缓冲区，杜绝海量 IPC 事件导致的 React 频繁重渲与 GPU 显存震荡
+  // 节流批处理缓冲区
   const pendingNodesRef = useRef<Map<string, FileNode>>(new Map());
   const flushTimerRef = useRef<number | null>(null);
   const canvasDimensionsRef = useRef<{ width: number; height: number; dpr: number }>({
@@ -74,6 +74,15 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     height: 0,
     dpr: 1,
   });
+
+  const getTargetDisplayName = (path: string) => {
+    const clean = path.replace(/\\$/, "");
+    if (clean.length <= 2 && clean.endsWith(":")) {
+      return `${clean.toUpperCase()} 盘`;
+    }
+    const name = clean.split("\\").pop();
+    return name ? `「${name}」目录` : path;
+  };
 
   const flushPendingNodes = useCallback(() => {
     if (pendingNodesRef.current.size === 0) return;
@@ -94,7 +103,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     flushTimerRef.current = window.setTimeout(() => {
       flushTimerRef.current = null;
       flushPendingNodes();
-    }, 150); // 150ms 节流合并
+    }, 150);
   }, [flushPendingNodes]);
 
   useEffect(() => {
@@ -246,7 +255,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     const dpr = window.devicePixelRatio || 1;
     const prevDim = canvasDimensionsRef.current;
 
-    // 仅在真实尺寸发生显著变化（>2px）或 DPR 改变时更新 Canvas 物理分辨率，避免挪动窗口时亚像素抖动造成显存爆炸
+    // 仅在真实尺寸发生显著变化（>2px）或 DPR 改变时更新 Canvas 物理分辨率
     if (
       Math.abs(prevDim.width - width) > 2 ||
       Math.abs(prevDim.height - height) > 2 ||
@@ -270,17 +279,19 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
 
     const totalSize = nodes.reduce((acc, curr) => acc + curr.size, 0);
 
-    if (viewMode === "treemap") {
-      const rects = computeSquarifiedTreemap(nodes, width, height, 6, colorMode);
-      treemapRectsRef.current = rects;
+    if (viewMode === "planet") {
+      // 🪐 星球图谱模式 (Planetary Celestial Map)
+      const planets = computePlanetarySystem(nodes, width, height, colorMode);
+      planetNodesRef.current = planets;
       sunburstSectorsRef.current = [];
 
-      for (const rect of rects) {
-        const isHovered = hoveredNode?.path === rect.data.path;
-        const isSelected = selectedNode?.path === rect.data.path;
-        drawTreemapCell(ctx, rect, isHovered, isSelected, totalSize);
+      for (const planet of planets) {
+        const isHovered = hoveredNode?.path === planet.data.path;
+        const isSelected = selectedNode?.path === planet.data.path;
+        drawPlanet(ctx, planet, isHovered, isSelected, totalSize);
       }
     } else {
+      // 🌌 罗盘模式 (Sunburst Wheel)
       const cx = width / 2;
       const cy = height / 2;
       const minDim = Math.min(width, height);
@@ -295,7 +306,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
         colorMode
       );
       sunburstSectorsRef.current = sectors;
-      treemapRectsRef.current = [];
+      planetNodesRef.current = [];
 
       const hoveredSector = sectors.find((s) => s.data.path === hoveredNode?.path) || null;
       const selectedSector =
@@ -317,7 +328,6 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     ctx.restore();
   }, [nodes, viewMode, colorMode, hoveredNode, selectedNode, currentPath]);
 
-  // 使用 Ref 保持 renderCanvas 的最新引用，彻底避免 ResizeObserver 反复解绑绑定的内存开销
   const renderCanvasRef = useRef(renderCanvas);
   renderCanvasRef.current = renderCanvas;
 
@@ -325,7 +335,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     renderCanvas();
   }, [renderCanvas]);
 
-  // 稳定持久的 ResizeObserver：监听容器尺寸，通过 requestAnimationFrame 节流防抖
+  // 稳定持久单例 ResizeObserver
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -347,17 +357,18 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     };
   }, []);
 
-  // 鼠标坐标命中探测
+  // 鼠标坐标命中探测（星球圆周探测 VS 极坐标罗盘扇区）
   const hitTest = (mouseX: number, mouseY: number): DisplayNode | null => {
-    if (viewMode === "treemap") {
-      const hit = treemapRectsRef.current.find(
-        (r) =>
-          mouseX >= r.x &&
-          mouseX <= r.x + r.width &&
-          mouseY >= r.y &&
-          mouseY <= r.y + r.height
-      );
-      return hit ? hit.data : null;
+    if (viewMode === "planet") {
+      // 星球欧几里得距离探测：(x - px)^2 + (y - py)^2 <= (r + 4)^2
+      for (let i = planetNodesRef.current.length - 1; i >= 0; i--) {
+        const p = planetNodesRef.current[i];
+        const dist = Math.hypot(mouseX - p.x, mouseY - p.y);
+        if (dist <= p.radius + 6) {
+          return p.data;
+        }
+      }
+      return null;
     } else {
       const container = containerRef.current;
       if (!container) return null;
@@ -366,8 +377,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
 
       const dx = mouseX - cx;
       const dy = mouseY - cy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
+      const dist = Math.hypot(dx, dy);
       const angle = Math.atan2(dy, dx);
 
       for (const s of sunburstSectorsRef.current) {
@@ -453,7 +463,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   };
 
   const totalDirSize = nodes.reduce((acc, curr) => acc + curr.size, 0);
-  const displayList = aggregateNodesForDisplay(nodes, 12, 0.02);
+  const displayList = aggregateNodesForDisplay(nodes, 10, 0.02);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden p-6 space-y-4 select-none">
@@ -463,39 +473,39 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
           <div>
             <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
               <Sparkles className="text-cyan-400" size={20} />
-              C 盘空间星系图 · 深空视觉透视
+              {getTargetDisplayName(currentPath)}空间星系图 · 深空视觉透视
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              DaisyDisk 级空间罗盘与多核矩阵，自动归并琐碎小文件，双击深入下钻探索。
+              3D 真实球体光感星球图谱与同心星盘罗盘，自动聚合微小碎文件，双击深入下钻探索。
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* 视角切换按钮：星盘罗盘 VS 矩阵树图 */}
+            {/* 视角切换按钮：星球图谱 VS 星盘罗盘 */}
             <div className="flex items-center bg-slate-950/80 p-1 rounded-xl border border-slate-800 text-xs">
+              <button
+                onClick={() => setViewMode("planet")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
+                  viewMode === "planet"
+                    ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-cyan-600/30 font-semibold"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+                title="天体引力发光星球图谱"
+              >
+                <Globe2 size={13} className="text-cyan-300" />
+                星球图谱
+              </button>
               <button
                 onClick={() => setViewMode("sunburst")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
                   viewMode === "sunburst"
-                    ? "bg-cyan-600 text-white shadow-md shadow-cyan-600/30 font-semibold"
+                    ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-cyan-600/30 font-semibold"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
                 title="DaisyDisk 风格同心圆环星系罗盘"
               >
                 <Disc3 size={13} className={viewMode === "sunburst" ? "animate-spin-slow" : ""} />
                 星盘罗盘
-              </button>
-              <button
-                onClick={() => setViewMode("treemap")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
-                  viewMode === "treemap"
-                    ? "bg-cyan-600 text-white shadow-md shadow-cyan-600/30 font-semibold"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-                title="高利用率毛玻璃矩形星系树图"
-              >
-                <LayoutGrid size={13} />
-                矩阵树图
               </button>
             </div>
 
@@ -623,7 +633,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
 
       {/* 主展示区：DaisyDisk 式左右分栏架构 */}
       <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
-        {/* 左侧：Canvas 视觉星盘 */}
+        {/* 左侧：Canvas 视觉星球/星盘 */}
         <div
           ref={containerRef}
           className="flex-1 bg-slate-950 border border-slate-800/80 rounded-2xl overflow-hidden relative flex flex-col min-h-0 shadow-2xl"
@@ -631,13 +641,13 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
           {!hasScanned && !loading && nodes.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-radial from-slate-900 to-slate-950">
               <div className="w-16 h-16 rounded-2xl bg-cyan-950/60 border border-cyan-800/40 flex items-center justify-center text-cyan-400 mb-4 shadow-xl shadow-cyan-900/30">
-                <Disc3 size={32} className="animate-spin-slow" />
+                <Globe2 size={32} className="text-cyan-400 animate-pulse" />
               </div>
               <h3 className="text-base font-bold text-slate-100">
-                就绪：C 盘空间星系探索
+                就绪：{getTargetDisplayName(currentPath)}空间星系探索
               </h3>
               <p className="text-xs text-slate-400 max-w-md mt-2 leading-relaxed">
-                当前目标路径为「{currentPath}」。采用自动 Top-N 空间聚合，告别密密麻麻细刺。
+                当前目标路径为「{currentPath}」。采用自动 Top-N 空间聚合与发光星球图谱，双击下钻探索。
               </p>
               <button
                 onClick={handleStartScan}
@@ -668,7 +678,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
           )}
         </div>
 
-        {/* 右侧：DaisyDisk 级空间大户排行榜 */}
+        {/* 右侧：空间大户透视清单 */}
         <div className="w-80 bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 flex flex-col min-h-0 backdrop-blur-xl shadow-xl shrink-0">
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
@@ -812,7 +822,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
           </div>
         ) : (
           <div className="text-slate-500 text-xs">
-            单击左侧星盘或右侧清单查看详情，双击目录可深入下钻子层级
+            单击左侧星球/星盘或右侧清单查看详情，双击目录可深入下钻子层级
           </div>
         )}
 

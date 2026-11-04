@@ -6,13 +6,13 @@ export interface DisplayNode extends FileNode {
   itemCount?: number;
 }
 
-export interface TreemapRect<T = DisplayNode> {
+export interface PlanetNode<T = DisplayNode> {
   x: number;
   y: number;
-  width: number;
-  height: number;
+  radius: number;
   data: T;
   color: NodeColorTheme;
+  hasRing?: boolean;
 }
 
 export interface SunburstSector<T = DisplayNode> {
@@ -25,7 +25,7 @@ export interface SunburstSector<T = DisplayNode> {
 }
 
 export type ColorMode = "category" | "heatmap";
-export type GalaxyViewMode = "sunburst" | "treemap";
+export type GalaxyViewMode = "sunburst" | "planet";
 
 export interface NodeColorTheme {
   bgFrom: string;
@@ -52,10 +52,10 @@ export const HEATMAP_TIERS: HeatmapTier[] = [
     minDays: 180,
     maxDays: Infinity,
     theme: {
-      bgFrom: "rgba(14, 48, 92, 0.85)",
-      bgTo: "rgba(2, 132, 199, 0.55)",
-      border: "rgba(56, 189, 248, 0.85)",
-      glow: "rgba(56, 189, 248, 0.50)",
+      bgFrom: "#1e3a8a",
+      bgTo: "#0284c7",
+      border: "#38bdf8",
+      glow: "rgba(56, 189, 248, 0.65)",
       accent: "#38bdf8",
       textColor: "#e0f2fe",
     },
@@ -66,10 +66,10 @@ export const HEATMAP_TIERS: HeatmapTier[] = [
     minDays: 60,
     maxDays: 180,
     theme: {
-      bgFrom: "rgba(14, 68, 96, 0.85)",
-      bgTo: "rgba(8, 145, 178, 0.55)",
-      border: "rgba(34, 211, 238, 0.85)",
-      glow: "rgba(34, 211, 238, 0.50)",
+      bgFrom: "#0e4460",
+      bgTo: "#0891b2",
+      border: "#22d3ee",
+      glow: "rgba(34, 211, 238, 0.65)",
       accent: "#22d3ee",
       textColor: "#cffafe",
     },
@@ -80,10 +80,10 @@ export const HEATMAP_TIERS: HeatmapTier[] = [
     minDays: 14,
     maxDays: 60,
     theme: {
-      bgFrom: "rgba(6, 78, 59, 0.85)",
-      bgTo: "rgba(5, 150, 105, 0.55)",
-      border: "rgba(52, 211, 153, 0.85)",
-      glow: "rgba(52, 211, 153, 0.50)",
+      bgFrom: "#065f46",
+      bgTo: "#059669",
+      border: "#34d399",
+      glow: "rgba(52, 211, 153, 0.65)",
       accent: "#34d399",
       textColor: "#d1fae5",
     },
@@ -94,10 +94,10 @@ export const HEATMAP_TIERS: HeatmapTier[] = [
     minDays: 3,
     maxDays: 14,
     theme: {
-      bgFrom: "rgba(120, 53, 15, 0.85)",
-      bgTo: "rgba(217, 119, 6, 0.55)",
-      border: "rgba(251, 191, 36, 0.85)",
-      glow: "rgba(251, 191, 36, 0.50)",
+      bgFrom: "#92400e",
+      bgTo: "#d97706",
+      border: "#fbbf24",
+      glow: "rgba(251, 191, 36, 0.65)",
       accent: "#fbbf24",
       textColor: "#fef3c7",
     },
@@ -108,10 +108,10 @@ export const HEATMAP_TIERS: HeatmapTier[] = [
     minDays: 0,
     maxDays: 3,
     theme: {
-      bgFrom: "rgba(136, 19, 55, 0.85)",
-      bgTo: "rgba(225, 29, 72, 0.60)",
-      border: "rgba(251, 113, 133, 0.90)",
-      glow: "rgba(251, 113, 133, 0.60)",
+      bgFrom: "#9f1239",
+      bgTo: "#e11d48",
+      border: "#fb7185",
+      glow: "rgba(251, 113, 133, 0.75)",
       accent: "#fb7185",
       textColor: "#ffe4e6",
     },
@@ -121,82 +121,82 @@ export const HEATMAP_TIERS: HeatmapTier[] = [
 // 🎨 优雅多样彩虹光谱（DaisyDisk 式多层彩色环，相邻色差分明）
 export const SPECTRUM_PALETTE: NodeColorTheme[] = [
   {
-    bgFrom: "rgba(99, 102, 241, 0.85)",
-    bgTo: "rgba(139, 92, 246, 0.55)",
-    border: "rgba(165, 180, 252, 0.90)",
-    glow: "rgba(129, 140, 248, 0.50)",
+    bgFrom: "#4f46e5",
+    bgTo: "#8b5cf6",
+    border: "#a5b4fc",
+    glow: "rgba(165, 180, 252, 0.65)",
     accent: "#a5b4fc",
     textColor: "#e0e7ff",
   },
   {
-    bgFrom: "rgba(14, 165, 233, 0.85)",
-    bgTo: "rgba(56, 189, 248, 0.55)",
-    border: "rgba(125, 211, 252, 0.90)",
-    glow: "rgba(56, 189, 248, 0.50)",
+    bgFrom: "#0284c7",
+    bgTo: "#38bdf8",
+    border: "#7dd3fc",
+    glow: "rgba(56, 189, 248, 0.65)",
     accent: "#38bdf8",
     textColor: "#e0f2fe",
   },
   {
-    bgFrom: "rgba(16, 185, 129, 0.85)",
-    bgTo: "rgba(52, 211, 153, 0.55)",
-    border: "rgba(110, 231, 183, 0.90)",
-    glow: "rgba(52, 211, 153, 0.50)",
+    bgFrom: "#059669",
+    bgTo: "#10b981",
+    border: "#6ee7b7",
+    glow: "rgba(52, 211, 153, 0.65)",
     accent: "#34d399",
     textColor: "#d1fae5",
   },
   {
-    bgFrom: "rgba(245, 158, 11, 0.85)",
-    bgTo: "rgba(251, 191, 36, 0.55)",
-    border: "rgba(252, 211, 77, 0.90)",
-    glow: "rgba(251, 191, 36, 0.50)",
+    bgFrom: "#d97706",
+    bgTo: "#f59e0b",
+    border: "#fde68a",
+    glow: "rgba(251, 191, 36, 0.65)",
     accent: "#fbbf24",
     textColor: "#fef3c7",
   },
   {
-    bgFrom: "rgba(236, 72, 153, 0.85)",
-    bgTo: "rgba(244, 114, 182, 0.55)",
-    border: "rgba(249, 168, 212, 0.90)",
-    glow: "rgba(244, 114, 182, 0.50)",
+    bgFrom: "#db2777",
+    bgTo: "#f472b6",
+    border: "#fbcfe8",
+    glow: "rgba(244, 114, 182, 0.65)",
     accent: "#f472b6",
     textColor: "#fce7f3",
   },
   {
-    bgFrom: "rgba(6, 182, 212, 0.85)",
-    bgTo: "rgba(34, 211, 238, 0.55)",
-    border: "rgba(103, 232, 249, 0.90)",
-    glow: "rgba(34, 211, 238, 0.50)",
+    bgFrom: "#0891b2",
+    bgTo: "#06b6d4",
+    border: "#a5f3fc",
+    glow: "rgba(34, 211, 238, 0.65)",
     accent: "#22d3ee",
     textColor: "#cffafe",
   },
   {
-    bgFrom: "rgba(249, 115, 22, 0.85)",
-    bgTo: "rgba(251, 146, 60, 0.55)",
-    border: "rgba(253, 186, 116, 0.90)",
-    glow: "rgba(251, 146, 60, 0.50)",
+    bgFrom: "#ea580c",
+    bgTo: "#fb923c",
+    border: "#fed7aa",
+    glow: "rgba(251, 146, 60, 0.65)",
     accent: "#fb923c",
     textColor: "#ffedd5",
   },
   {
-    bgFrom: "rgba(168, 85, 247, 0.85)",
-    bgTo: "rgba(192, 132, 252, 0.55)",
-    border: "rgba(216, 180, 254, 0.90)",
-    glow: "rgba(192, 132, 252, 0.50)",
+    bgFrom: "#9333ea",
+    bgTo: "#c084fc",
+    border: "#f3e8ff",
+    glow: "rgba(192, 132, 252, 0.65)",
     accent: "#c084fc",
     textColor: "#f3e8ff",
   },
   {
-    bgFrom: "rgba(225, 29, 72, 0.85)",
-    bgTo: "rgba(244, 63, 94, 0.55)",
-    border: "rgba(251, 113, 133, 0.90)",
-    glow: "rgba(244, 63, 94, 0.50)",
+    bgFrom: "#e11d48",
+    bgTo: "#fb7185",
+    border: "#ffe4e6",
+    glow: "rgba(251, 113, 133, 0.65)",
     accent: "#fb7185",
     textColor: "#ffe4e6",
   },
   {
-    bgFrom: "rgba(20, 184, 166, 0.85)",
-    bgTo: "rgba(45, 212, 191, 0.55)",
-    border: "rgba(94, 234, 212, 0.90)",
-    glow: "rgba(45, 212, 191, 0.50)",
+    bgFrom: "#0d9488",
+    bgTo: "#2dd4bf",
+    border: "#99f6e4",
+    glow: "rgba(45, 212, 191, 0.65)",
     accent: "#2dd4bf",
     textColor: "#ccfbf1",
   },
@@ -204,23 +204,21 @@ export const SPECTRUM_PALETTE: NodeColorTheme[] = [
 
 // 其它碎文件的中性灰蓝调色板
 export const OTHER_ITEMS_THEME: NodeColorTheme = {
-  bgFrom: "rgba(51, 65, 85, 0.70)",
-  bgTo: "rgba(71, 85, 105, 0.45)",
-  border: "rgba(148, 163, 184, 0.65)",
-  glow: "rgba(148, 163, 184, 0.25)",
+  bgFrom: "#334155",
+  bgTo: "#475569",
+  border: "#94a3b8",
+  glow: "rgba(148, 163, 184, 0.40)",
   accent: "#94a3b8",
   textColor: "#e2e8f0",
 };
 
 /**
- * 🌟 核心聚合器 (DaisyDisk-style Top-N + Others Aggregator)
- * 提取占用最大的 Top-12 项，其余全部聚合成「其它较小项目 (N 项)」，
- * 保证画布永远呈现 6~14 个宽大饱满的大扇区。
+ * 🌟 核心聚合器 (Top-N + Others Aggregator)
  */
 export function aggregateNodesForDisplay(
   nodes: FileNode[],
-  maxTopItems: number = 12,
-  minPercentage: number = 0.015
+  maxTopItems: number = 10,
+  minPercentage: number = 0.02
 ): DisplayNode[] {
   if (nodes.length <= maxTopItems) {
     return nodes.map((n) => ({ ...n }));
@@ -239,7 +237,7 @@ export function aggregateNodesForDisplay(
     const item = sorted[i];
     const pct = item.size / totalSize;
 
-    if (topItems.length < maxTopItems && (pct >= minPercentage || topItems.length < 5)) {
+    if (topItems.length < maxTopItems && (pct >= minPercentage || topItems.length < 4)) {
       topItems.push({ ...item });
     } else {
       otherItems.push(item);
@@ -297,7 +295,7 @@ export function getNodeColorTheme(
 }
 
 /**
- * 绘制高品质深邃星空背景与暗黑微光网格（极速无 save/restore 内存开销版）
+ * 绘制高品质深邃星空背景与暗黑微光网格
  */
 export function drawStarfield(
   ctx: CanvasRenderingContext2D,
@@ -307,20 +305,20 @@ export function drawStarfield(
   const bgGrad = ctx.createRadialGradient(
     width / 2,
     height / 2,
-    40,
+    30,
     width / 2,
     height / 2,
     Math.max(width, height) * 0.7
   );
-  bgGrad.addColorStop(0, "#0c1322");
-  bgGrad.addColorStop(0.6, "#080c16");
-  bgGrad.addColorStop(1, "#04070e");
+  bgGrad.addColorStop(0, "#0b1220");
+  bgGrad.addColorStop(0.65, "#060913");
+  bgGrad.addColorStop(1, "#020408");
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, width, height);
 
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.025)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.02)";
   ctx.lineWidth = 1;
-  const gridSize = 50;
+  const gridSize = 45;
   ctx.beginPath();
   for (let x = 0; x < width; x += gridSize) {
     ctx.moveTo(x, 0);
@@ -332,9 +330,8 @@ export function drawStarfield(
   }
   ctx.stroke();
 
-  // 绘制星芒点，避免在循环中 save/restore
-  const starCount = Math.min(80, Math.floor((width * height) / 10000));
-  ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
+  const starCount = Math.min(75, Math.floor((width * height) / 10000));
+  ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
   ctx.beginPath();
   for (let i = 0; i < starCount; i++) {
     const sx = (Math.sin(i * 123.456) * 0.5 + 0.5) * width;
@@ -344,6 +341,205 @@ export function drawStarfield(
     ctx.arc(sx, sy, r, 0, Math.PI * 2);
   }
   ctx.fill();
+}
+
+/**
+ * 🪐 星球图谱天体引力算法 (Planetary Celestial Map Layout Algorithm)
+ * 将目录与文件转化为发光天体星球，半径正比于体积平方根，按引力与碰撞算法自适应星系排布
+ */
+export function computePlanetarySystem(
+  rawNodes: FileNode[],
+  width: number,
+  height: number,
+  colorMode: ColorMode = "category"
+): PlanetNode<DisplayNode>[] {
+  const displayNodes = aggregateNodesForDisplay(rawNodes, 10, 0.02);
+  if (displayNodes.length === 0 || width <= 0 || height <= 0) return [];
+
+  const totalSize = displayNodes.reduce((acc, curr) => acc + curr.size, 0);
+  const cx = width / 2;
+  const cy = height / 2;
+
+  // 根据画布尺寸决定可用星系空间与星球半径尺度
+  const minDim = Math.min(width, height);
+  const maxRadius = Math.min(110, minDim * 0.22);
+  const minRadius = 32;
+
+  const planets: PlanetNode<DisplayNode>[] = displayNodes.map((node, i) => {
+    const ratio = node.size / totalSize;
+    // 半径按面积比例衰减开方
+    const radius = Math.max(
+      minRadius,
+      Math.min(maxRadius, Math.sqrt(ratio) * (minDim * 0.38))
+    );
+
+    // 初始位置分布：依黄金角排列在不同半径的轨道上
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    const dist = i === 0 ? 0 : (radius + 20) + (i * 26);
+    const angle = i * goldenAngle;
+
+    const x = cx + Math.cos(angle) * (dist * 0.85);
+    const y = cy + Math.sin(angle) * (dist * 0.85);
+
+    return {
+      x,
+      y,
+      radius,
+      data: node,
+      color: getNodeColorTheme(node, colorMode, i),
+      hasRing: i === 0 && radius >= 55, // 最大星球自带宏伟星环
+    };
+  });
+
+  // 2D 物理碰撞斥力迭代松弛算法 (20 次迭代迅速收敛，保持星球互不重叠且紧凑优雅)
+  for (let iter = 0; iter < 24; iter++) {
+    for (let i = 0; i < planets.length; i++) {
+      for (let j = i + 1; j < planets.length; j++) {
+        const p1 = planets[i];
+        const p2 = planets[j];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const minDist = p1.radius + p2.radius + 18; // 18px 舒适星际间距
+
+        if (dist < minDist) {
+          const overlap = (minDist - dist) / 2;
+          const nx = dx / dist;
+          const ny = dy / dist;
+
+          // 大星球质量大，受力位移偏小
+          const weight1 = p2.radius / (p1.radius + p2.radius);
+          const weight2 = p1.radius / (p1.radius + p2.radius);
+
+          p1.x -= nx * overlap * weight1;
+          p1.y -= ny * overlap * weight1;
+          p2.x += nx * overlap * weight2;
+          p2.y += ny * overlap * weight2;
+        }
+      }
+
+      // 居中引力：向画面中心柔和回缩
+      const p = planets[i];
+      p.x += (cx - p.x) * 0.04;
+      p.y += (cy - p.y) * 0.04;
+
+      // 边界约束
+      p.x = Math.max(p.radius + 15, Math.min(width - p.radius - 15, p.x));
+      p.y = Math.max(p.radius + 15, Math.min(height - p.radius - 15, p.y));
+    }
+  }
+
+  return planets;
+}
+
+/**
+ * 绘制高质感发光天体星球 (Celestial 3D Planet Renderer)
+ */
+export function drawPlanet(
+  ctx: CanvasRenderingContext2D,
+  planet: PlanetNode<DisplayNode>,
+  isHovered: boolean,
+  isSelected: boolean,
+  totalDiskSize: number
+) {
+  const { x, y, radius, data, color, hasRing } = planet;
+
+  ctx.save();
+
+  // 1. 大气发光日冕 (Atmospheric Glow Corona)
+  ctx.beginPath();
+  ctx.arc(x, y, radius + (isHovered || isSelected ? 8 : 4), 0, Math.PI * 2);
+  ctx.fillStyle = isSelected
+    ? "rgba(56, 189, 248, 0.25)"
+    : isHovered
+    ? color.glow
+    : "rgba(255, 255, 255, 0.04)";
+  ctx.shadowColor = isSelected ? "#38bdf8" : color.border;
+  ctx.shadowBlur = isSelected ? 32 : isHovered ? 24 : 14;
+  ctx.fill();
+
+  // 2. 真实 3D 球体径向渐变采光 (3D Spherical Light Gradient)
+  const lightOffsetX = -radius * 0.32;
+  const lightOffsetY = -radius * 0.32;
+  const sphereGrad = ctx.createRadialGradient(
+    x + lightOffsetX,
+    y + lightOffsetY,
+    radius * 0.08,
+    x,
+    y,
+    radius
+  );
+  sphereGrad.addColorStop(0, "#ffffff");
+  sphereGrad.addColorStop(0.2, color.border);
+  sphereGrad.addColorStop(0.65, color.bgTo);
+  sphereGrad.addColorStop(1, color.bgFrom);
+
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fillStyle = sphereGrad;
+  ctx.fill();
+
+  // 3. 星球边缘精细发光外圈
+  ctx.lineWidth = isSelected ? 3 : isHovered ? 2.5 : 1.2;
+  ctx.strokeStyle = isSelected
+    ? "#ffffff"
+    : isHovered
+    ? "#ffffff"
+    : color.border;
+  ctx.stroke();
+
+  // 4. 土星式宏伟星环 (Saturn Planetary Ring for super-planets)
+  if (hasRing && radius >= 50) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(-Math.PI / 6);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, radius * 1.6, radius * 0.42, 0, 0, Math.PI * 2);
+    ctx.lineWidth = Math.max(3, radius * 0.08);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+    ctx.shadowColor = color.border;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 5. 星球表面清晰文字与数据徽章
+  ctx.shadowBlur = 0;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  const iconSymbol = data.isVirtualOther ? "📦" : data.isDir ? "📁" : "📄";
+  const nameMaxW = radius * 1.5;
+
+  if (radius >= 32) {
+    // 居中或略偏上显示名称
+    ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    ctx.fillStyle = "#ffffff";
+
+    let displayName = data.name;
+    while (ctx.measureText(displayName).width > nameMaxW && displayName.length > 4) {
+      displayName = displayName.slice(0, -2) + "…";
+    }
+
+    const textYOffset = radius >= 45 ? -8 : 0;
+    ctx.fillText(`${iconSymbol} ${displayName}`, x, y + textYOffset);
+
+    // 显示体积与占比
+    if (radius >= 45) {
+      ctx.font = "bold 12px ui-monospace, SFMono-Regular, monospace";
+      ctx.fillStyle = color.accent;
+      ctx.fillText(formatBytes(data.size), x, y + 12);
+
+      if (totalDiskSize > 0 && radius >= 60) {
+        const pct = ((data.size / totalDiskSize) * 100).toFixed(1) + "%";
+        ctx.font = "500 10px ui-monospace, monospace";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+        ctx.fillText(`(${pct})`, x, y + 26);
+      }
+    }
+  }
+
+  ctx.restore();
 }
 
 /**
@@ -401,7 +597,7 @@ export function drawSunburstWheel(
   hoveredSector: SunburstSector<DisplayNode> | null,
   selectedSector: SunburstSector<DisplayNode> | null
 ) {
-  // 1. 绘制核心母星光环
+  // 1. 核心恒星
   ctx.save();
   ctx.beginPath();
   ctx.arc(centerX, centerY, coreRadius - 6, 0, Math.PI * 2);
@@ -532,232 +728,4 @@ export function drawSunburstWheel(
 
     ctx.restore();
   }
-}
-
-/**
- * Squarified Treemap Algorithm
- */
-export function computeSquarifiedTreemap(
-  rawNodes: FileNode[],
-  width: number,
-  height: number,
-  padding: number = 6,
-  colorMode: ColorMode = "category"
-): TreemapRect<DisplayNode>[] {
-  if (rawNodes.length === 0 || width <= 0 || height <= 0) return [];
-
-  const displayNodes = aggregateNodesForDisplay(rawNodes, 16, 0.015);
-  const totalSize = displayNodes.reduce((acc, curr) => acc + curr.size, 0);
-  const totalArea = width * height;
-
-  interface Item {
-    node: DisplayNode;
-    area: number;
-    index: number;
-  }
-
-  const items: Item[] = displayNodes.map((n, idx) => ({
-    node: n,
-    area: (n.size / totalSize) * totalArea,
-    index: idx,
-  }));
-
-  items.sort((a, b) => b.area - a.area);
-
-  const rects: TreemapRect<DisplayNode>[] = [];
-
-  function worst(rowAreas: number[], sideLength: number): number {
-    if (rowAreas.length === 0 || sideLength === 0) return Infinity;
-    const sum = rowAreas.reduce((acc, val) => acc + val, 0);
-    const max = Math.max(...rowAreas);
-    const min = Math.min(...rowAreas);
-    const side2 = sideLength * sideLength;
-    const sum2 = sum * sum;
-    return Math.max((side2 * max) / sum2, sum2 / (side2 * min));
-  }
-
-  function layoutRow(
-    row: Item[],
-    x: number,
-    y: number,
-    sideLength: number,
-    isVertical: boolean
-  ) {
-    const rowArea = row.reduce((acc, curr) => acc + curr.area, 0);
-    const rowThickness = rowArea / sideLength;
-    let offset = 0;
-
-    for (const item of row) {
-      const itemLen = item.area / rowThickness;
-      let rx: number, ry: number, rw: number, rh: number;
-
-      if (isVertical) {
-        rx = x;
-        ry = y + offset;
-        rw = rowThickness;
-        rh = itemLen;
-      } else {
-        rx = x + offset;
-        ry = y;
-        rw = itemLen;
-        rh = rowThickness;
-      }
-
-      rects.push({
-        x: rx + padding / 2,
-        y: ry + padding / 2,
-        width: Math.max(0, rw - padding),
-        height: Math.max(0, rh - padding),
-        data: item.node,
-        color: getNodeColorTheme(item.node, colorMode, item.index),
-      });
-
-      offset += itemLen;
-    }
-  }
-
-  function squarify(
-    children: Item[],
-    row: Item[],
-    x: number,
-    y: number,
-    w: number,
-    h: number
-  ) {
-    if (w <= 0 || h <= 0) return;
-    if (children.length === 0) {
-      if (row.length > 0) {
-        const isVertical = w >= h;
-        const shortSide = Math.min(w, h);
-        layoutRow(row, x, y, shortSide, !isVertical);
-      }
-      return;
-    }
-
-    const nextChild = children[0];
-    const isVertical = w >= h;
-    const shortSide = Math.min(w, h);
-
-    const currentWorst =
-      row.length === 0 ? Infinity : worst(row.map((r) => r.area), shortSide);
-    const newRow = [...row, nextChild];
-    const newWorst = worst(newRow.map((r) => r.area), shortSide);
-
-    if (newWorst <= currentWorst || row.length === 0) {
-      squarify(children.slice(1), newRow, x, y, w, h);
-    } else {
-      const rowArea = row.reduce((acc, r) => acc + r.area, 0);
-      const rowThickness = rowArea / shortSide;
-
-      if (isVertical) {
-        layoutRow(row, x, y, shortSide, false);
-        squarify(children, [], x + rowThickness, y, w - rowThickness, h);
-      } else {
-        layoutRow(row, x, y, shortSide, true);
-        squarify(children, [], x, y + rowThickness, w, h - rowThickness);
-      }
-    }
-  }
-
-  squarify(items, [], 0, 0, width, height);
-  return rects;
-}
-
-/**
- * 绘制高质感毛玻璃星系矩阵单元格
- */
-export function drawTreemapCell(
-  ctx: CanvasRenderingContext2D,
-  rect: TreemapRect<DisplayNode>,
-  isHovered: boolean,
-  isSelected: boolean,
-  totalDiskSize: number
-) {
-  const { x, y, width, height, data, color } = rect;
-  if (width < 3 || height < 3) return;
-
-  const radius = Math.min(8, width / 4, height / 4);
-
-  ctx.save();
-
-  if (isSelected || isHovered) {
-    ctx.shadowColor = isSelected ? "#38bdf8" : color.glow;
-    ctx.shadowBlur = isSelected ? 24 : 16;
-  }
-
-  ctx.beginPath();
-  ctx.roundRect(x, y, width, height, radius);
-
-  const grad = ctx.createLinearGradient(x, y, x + width, y + height);
-  if (isSelected) {
-    grad.addColorStop(0, "rgba(14, 116, 144, 0.95)");
-    grad.addColorStop(1, "rgba(56, 189, 248, 0.85)");
-  } else if (isHovered) {
-    grad.addColorStop(0, color.bgFrom.replace(/0\.\d+\)/, "0.95)"));
-    grad.addColorStop(1, color.bgTo.replace(/0\.\d+\)/, "0.80)"));
-  } else {
-    grad.addColorStop(0, color.bgFrom);
-    grad.addColorStop(1, color.bgTo);
-  }
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  const sheenHeight = Math.min(height * 0.4, 28);
-  if (sheenHeight > 4 && width > 10) {
-    const sheenGrad = ctx.createLinearGradient(x, y, x, y + sheenHeight);
-    sheenGrad.addColorStop(0, "rgba(255, 255, 255, 0.16)");
-    sheenGrad.addColorStop(1, "rgba(255, 255, 255, 0.0)");
-    ctx.fillStyle = sheenGrad;
-    ctx.beginPath();
-    ctx.roundRect(x + 1, y + 1, width - 2, sheenHeight, [radius, radius, 0, 0]);
-    ctx.fill();
-  }
-
-  ctx.lineWidth = isSelected ? 2.5 : isHovered ? 2 : 1;
-  ctx.strokeStyle = isSelected
-    ? "#38bdf8"
-    : isHovered
-    ? "#ffffff"
-    : color.border;
-  ctx.stroke();
-
-  const pad = 10;
-  const availW = width - pad * 2;
-  const availH = height - pad * 2;
-
-  if (availW >= 40 && availH >= 24) {
-    const iconSymbol = data.isVirtualOther ? "📦" : data.isDir ? "📁" : "📄";
-    ctx.font = `12px -apple-system, sans-serif`;
-    ctx.fillStyle = color.accent;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillText(iconSymbol, x + pad, y + pad);
-
-    const nameX = x + pad + 18;
-    const maxNameW = availW - 20;
-    ctx.font = `bold ${Math.min(13, Math.max(11, Math.floor(width / 12)))}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
-    ctx.fillStyle = "#ffffff";
-
-    let nameText = data.name;
-    while (ctx.measureText(nameText).width > maxNameW && nameText.length > 3) {
-      nameText = nameText.slice(0, -2) + "...";
-    }
-    ctx.fillText(nameText, nameX, y + pad);
-
-    if (availH >= 52) {
-      const sizeY = y + pad + 20;
-      ctx.fillStyle = color.accent;
-      ctx.font = `bold ${Math.min(14, Math.max(11, Math.floor(width / 14)))}px ui-monospace, monospace`;
-      ctx.fillText(formatBytes(data.size), x + pad, sizeY);
-
-      if (totalDiskSize > 0 && availW >= 90) {
-        const pct = ((data.size / totalDiskSize) * 100).toFixed(1) + "%";
-        ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
-        ctx.font = `500 10px ui-monospace, monospace`;
-        ctx.fillText(`(${pct})`, x + pad + ctx.measureText(formatBytes(data.size)).width + 6, sizeY + 2);
-      }
-    }
-  }
-
-  ctx.restore();
 }
