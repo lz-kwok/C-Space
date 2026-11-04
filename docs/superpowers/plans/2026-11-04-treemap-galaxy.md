@@ -1,4 +1,4 @@
-# C 盘空间星系图 (Treemap) 与冷热数据热力渲染 实现计划
+# 磁盘空间星系图 (Treemap) 与冷热数据热力渲染 实现计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,7 +8,7 @@
 - **后端 (Rust / `scanner.rs`)**：在 `FileNode` 中补充修改时间与距今天数（`days_since_modified`、`modified_time`），零额外 I/O 开销复用已有流式遍历；
 - **前端算法 (`src/utils/treemap.ts`)**：实现高性能 Squarified Treemap 切割算法与冷热色彩映射函数；
 - **前端页面与画布 (`src/pages/TreemapView.tsx`)**：基于原生 HTML5 Canvas 构建自适应高清高帧率交互视窗，支持悬浮 Tooltip、面包屑导航、多级下钻 (Zoom In / Out)、右键/操作栏动作（资源管理器定位、搬家、删除）；
-- **导航整合 (`src/App.tsx`)**：将「C 盘空间星系图」作为顶部导航独立核心模块。
+- **导航整合 (`src/App.tsx`)**：将「磁盘空间星系图」作为顶部导航独立核心模块。
 
 **Tech Stack:** Tauri v2, Rust, React 19, HTML5 Canvas 2D, TypeScript, Tailwind CSS v4, Lucide Icons.
 

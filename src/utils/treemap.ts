@@ -214,15 +214,13 @@ export const OTHER_ITEMS_THEME: NodeColorTheme = {
 
 /**
  * 🌟 核心聚合器 (DaisyDisk-style Top-N + Others Aggregator)
- * 当一个目录下有成百上千个小文件时（例如用户截图里的 737 个文件），
- * 绝不能把 737 个文件硬生生画成一圈密密麻麻的 1px 细线！
- * 算法提取空间占用最大的 Top-12 项，其余全部聚合成「其它较小文件 (N 项)」，
- * 保证画布永远呈现 6~14 个宽敞优雅、易看、易点击的大扇区。
+ * 提取占用最大的 Top-12 项，其余全部聚合成「其它较小项目 (N 项)」，
+ * 保证画布永远呈现 6~14 个宽大饱满的大扇区。
  */
 export function aggregateNodesForDisplay(
   nodes: FileNode[],
   maxTopItems: number = 12,
-  minPercentage: number = 0.015 // 小于 1.5% 的合并
+  minPercentage: number = 0.015
 ): DisplayNode[] {
   if (nodes.length <= maxTopItems) {
     return nodes.map((n) => ({ ...n }));
@@ -232,7 +230,6 @@ export function aggregateNodesForDisplay(
   const totalSize = valid.reduce((acc, curr) => acc + curr.size, 0);
   if (totalSize === 0) return [];
 
-  // 按体积降序排列
   const sorted = [...valid].sort((a, b) => b.size - a.size);
 
   const topItems: DisplayNode[] = [];
@@ -249,7 +246,6 @@ export function aggregateNodesForDisplay(
     }
   }
 
-  // 若存在被合并的琐碎小文件，生成聚合节点
   if (otherItems.length > 0) {
     const otherSize = otherItems.reduce((acc, curr) => acc + curr.size, 0);
     const otherNode: DisplayNode = {
@@ -297,12 +293,11 @@ export function getNodeColorTheme(
     return OTHER_ITEMS_THEME;
   }
 
-  // 类型/彩虹光谱模式：按顺时针序号分配明丽协调的调色
   return SPECTRUM_PALETTE[index % SPECTRUM_PALETTE.length];
 }
 
 /**
- * 绘制高品质深邃星空背景与暗黑微光网格
+ * 绘制高品质深邃星空背景与暗黑微光网格（极速无 save/restore 内存开销版）
  */
 export function drawStarfield(
   ctx: CanvasRenderingContext2D,
@@ -337,26 +332,22 @@ export function drawStarfield(
   }
   ctx.stroke();
 
-  // 散落星芒
-  const starCount = Math.floor((width * height) / 10000);
-  ctx.fillStyle = "#ffffff";
+  // 绘制星芒点，避免在循环中 save/restore
+  const starCount = Math.min(80, Math.floor((width * height) / 10000));
+  ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
+  ctx.beginPath();
   for (let i = 0; i < starCount; i++) {
     const sx = (Math.sin(i * 123.456) * 0.5 + 0.5) * width;
     const sy = (Math.cos(i * 654.321) * 0.5 + 0.5) * height;
-    const r = (Math.sin(i * 987.654) * 0.5 + 0.5) * 1.2 + 0.4;
-    const alpha = (Math.cos(i * 333.222) * 0.5 + 0.5) * 0.35 + 0.1;
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.beginPath();
+    const r = (Math.sin(i * 987.654) * 0.5 + 0.5) * 1.0 + 0.5;
+    ctx.moveTo(sx + r, sy);
     ctx.arc(sx, sy, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
   }
+  ctx.fill();
 }
 
 /**
- * 🌌 DaisyDisk 风格星系同心罗盘算法 (宽大弧度，告别细刺密集恐惧)
+ * 🌌 DaisyDisk 风格星系同心罗盘算法
  */
 export function computeSunburstSectors(
   rawNodes: FileNode[],
@@ -370,11 +361,10 @@ export function computeSunburstSectors(
   const totalSize = displayNodes.reduce((acc, curr) => acc + curr.size, 0);
   const sectors: SunburstSector<DisplayNode>[] = [];
 
-  let currentAngle = -Math.PI / 2; // 从 12 点钟方向顺时针展开
+  let currentAngle = -Math.PI / 2;
   const fullCircle = Math.PI * 2;
-  const minAngle = 0.10; // 每个扇区至少保留 ~6 度宽大可见扇面，绝无细刺感！
+  const minAngle = 0.10;
 
-  // 保证极小项也有充足视觉厚度
   for (let i = 0; i < displayNodes.length; i++) {
     const n = displayNodes[i];
     let span = (n.size / totalSize) * fullCircle;
@@ -411,7 +401,7 @@ export function drawSunburstWheel(
   hoveredSector: SunburstSector<DisplayNode> | null,
   selectedSector: SunburstSector<DisplayNode> | null
 ) {
-  // 1. 绘制核心母星光环 (Central Star Core)
+  // 1. 绘制核心母星光环
   ctx.save();
   ctx.beginPath();
   ctx.arc(centerX, centerY, coreRadius - 6, 0, Math.PI * 2);
@@ -471,7 +461,7 @@ export function drawSunburstWheel(
     }
 
     ctx.beginPath();
-    const gap = 0.025; // 扇区间清晰的物理切割缝隙
+    const gap = 0.025;
     const a1 = s.startAngle + gap / 2;
     const a2 = s.endAngle - gap / 2;
 
@@ -508,7 +498,6 @@ export function drawSunburstWheel(
       : s.color.border;
     ctx.stroke();
 
-    // 扇面上的标签文字与体积
     const angleSpan = a2 - a1;
     if (angleSpan > 0.18 && drawOuter - drawInner > 35) {
       ctx.shadowBlur = 0;
@@ -546,7 +535,7 @@ export function drawSunburstWheel(
 }
 
 /**
- * Squarified Treemap Algorithm (带 Top-N 聚合，绝无碎块乱屏)
+ * Squarified Treemap Algorithm
  */
 export function computeSquarifiedTreemap(
   rawNodes: FileNode[],

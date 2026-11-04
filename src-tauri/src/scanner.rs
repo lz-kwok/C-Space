@@ -163,6 +163,7 @@ pub fn scan_dir_level_progressive(
 
     use rayon::prelude::*;
 
+    let total_count = paths.len();
     let mut nodes: Vec<FileNode> = paths
         .into_par_iter()
         .filter_map(|p| {
@@ -227,13 +228,15 @@ pub fn scan_dir_level_progressive(
                 days_since_modified,
             };
 
-            // 立即渐进式广播此节点
-            let _ = app.emit("scan-node-found", ScanProgressEvent {
-                scan_id: scan_id.to_string(),
-                parent_path: parent_str.clone(),
-                node: node.clone(),
-                is_done: false,
-            });
+            // 渐进式广播：对目录或体积大于 5MB 的重要项目实时推送；避免对成百上千个微小琐碎文件滥发 IPC 导致前端消息积压与显存暴涨
+            if is_dir || size >= 5 * 1024 * 1024 || total_count <= 50 {
+                let _ = app.emit("scan-node-found", ScanProgressEvent {
+                    scan_id: scan_id.to_string(),
+                    parent_path: parent_str.clone(),
+                    node: node.clone(),
+                    is_done: false,
+                });
+            }
 
             Some(node)
         })

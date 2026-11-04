@@ -66,7 +66,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   const sunburstSectorsRef = useRef<SunburstSector<DisplayNode>[]>([]);
   const activeScanIdRef = useRef<string>("");
 
-  // 节流批处理缓冲区
+  // 节流批处理缓冲区，杜绝海量 IPC 事件导致的 React 频繁重渲与 GPU 显存震荡
   const pendingNodesRef = useRef<Map<string, FileNode>>(new Map());
   const flushTimerRef = useRef<number | null>(null);
   const canvasDimensionsRef = useRef<{ width: number; height: number; dpr: number }>({
@@ -94,7 +94,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     flushTimerRef.current = window.setTimeout(() => {
       flushTimerRef.current = null;
       flushPendingNodes();
-    }, 120);
+    }, 150); // 150ms 节流合并
   }, [flushPendingNodes]);
 
   useEffect(() => {
@@ -239,14 +239,19 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     const container = containerRef.current;
     if (!canvas || !container) return;
 
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-    if (width <= 0 || height <= 0) return;
+    const width = Math.floor(container.clientWidth);
+    const height = Math.floor(container.clientHeight);
+    if (width <= 10 || height <= 10) return;
 
     const dpr = window.devicePixelRatio || 1;
     const prevDim = canvasDimensionsRef.current;
 
-    if (prevDim.width !== width || prevDim.height !== height || prevDim.dpr !== dpr) {
+    // 仅在真实尺寸发生显著变化（>2px）或 DPR 改变时更新 Canvas 物理分辨率，避免挪动窗口时亚像素抖动造成显存爆炸
+    if (
+      Math.abs(prevDim.width - width) > 2 ||
+      Math.abs(prevDim.height - height) > 2 ||
+      prevDim.dpr !== dpr
+    ) {
       canvas.width = width * dpr;
       canvas.height = height * dpr;
       canvas.style.width = `${width}px`;
@@ -312,23 +317,35 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     ctx.restore();
   }, [nodes, viewMode, colorMode, hoveredNode, selectedNode, currentPath]);
 
+  // 使用 Ref 保持 renderCanvas 的最新引用，彻底避免 ResizeObserver 反复解绑绑定的内存开销
+  const renderCanvasRef = useRef(renderCanvas);
+  renderCanvasRef.current = renderCanvas;
+
   useEffect(() => {
     renderCanvas();
   }, [renderCanvas]);
 
+  // 稳定持久的 ResizeObserver：监听容器尺寸，通过 requestAnimationFrame 节流防抖
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    let rafId: number | null = null;
     const resizeObserver = new ResizeObserver(() => {
-      renderCanvas();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        renderCanvasRef.current();
+      });
     });
+
     resizeObserver.observe(container);
 
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
     };
-  }, [renderCanvas]);
+  }, []);
 
   // 鼠标坐标命中探测
   const hitTest = (mouseX: number, mouseY: number): DisplayNode | null => {
@@ -436,8 +453,6 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   };
 
   const totalDirSize = nodes.reduce((acc, curr) => acc + curr.size, 0);
-
-  // 聚合生成右侧清单
   const displayList = aggregateNodesForDisplay(nodes, 12, 0.02);
 
   return (
@@ -451,7 +466,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
               C 盘空间星系图 · 深空视觉透视
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              DaisyDisk 级空间罗盘与多核矩阵，自动归并琐碎碎文件，双击深入下钻探索。
+              DaisyDisk 级空间罗盘与多核矩阵，自动归并琐碎小文件，双击深入下钻探索。
             </p>
           </div>
 
@@ -606,7 +621,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
         </div>
       </div>
 
-      {/* 主展示区：DaisyDisk 式左右分栏架构 (左侧星盘 + 右侧大户排行) */}
+      {/* 主展示区：DaisyDisk 式左右分栏架构 */}
       <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
         {/* 左侧：Canvas 视觉星盘 */}
         <div
@@ -653,7 +668,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
           )}
         </div>
 
-        {/* 右侧：DaisyDisk 级空间大户排行榜 (Ranked List) */}
+        {/* 右侧：DaisyDisk 级空间大户排行榜 */}
         <div className="w-80 bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 flex flex-col min-h-0 backdrop-blur-xl shadow-xl shrink-0">
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
@@ -707,7 +722,6 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
                       </span>
                     </div>
 
-                    {/* 百分比条 */}
                     <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-300"
@@ -744,7 +758,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
         </div>
       </div>
 
-      {/* 底部操作与图例栏 */}
+      {/* 底部操作栏 */}
       <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl px-4 py-2.5 flex justify-between items-center text-xs flex-wrap gap-3 backdrop-blur-xl">
         {selectedNode ? (
           <div className="flex items-center gap-3">
@@ -802,7 +816,6 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
           </div>
         )}
 
-        {/* 调色说明 */}
         <div className="flex items-center gap-2 text-[11px] text-slate-400">
           <span className="text-slate-500">提示:</span>
           <span>已自动将碎小文件聚合为「其它项目」，点击右侧卡片即可精准锁定</span>

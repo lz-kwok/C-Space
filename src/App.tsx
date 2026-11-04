@@ -91,11 +91,10 @@ export default function App() {
           <nav className="space-y-1">
             <button
               onClick={() => setActiveTab("explorer")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === "explorer"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === "explorer"
                   ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
-              }`}
+                }`}
             >
               <HardDrive size={16} />
               磁盘与目录透视分析
@@ -103,23 +102,21 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("treemap")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === "treemap"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === "treemap"
                   ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-cyan-600/30"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
-              }`}
+                }`}
             >
               <Disc3 size={16} />
-              C 盘空间星系图 (Galaxy)
+              磁盘空间星系图 (Galaxy)
             </button>
 
             <button
               onClick={() => setActiveTab("big_files")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === "big_files"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === "big_files"
                   ? "bg-amber-600 text-white shadow-lg shadow-amber-600/30"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
-              }`}
+                }`}
             >
               <Layers size={16} />
               大文件扫描与定位
@@ -127,11 +124,10 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("duplicates")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === "duplicates"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === "duplicates"
                   ? "bg-cyan-600 text-white shadow-lg shadow-cyan-600/30"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
-              }`}
+                }`}
             >
               <Copy size={16} />
               重复文件两阶段比对
@@ -139,11 +135,10 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("cleaner")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === "cleaner"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === "cleaner"
                   ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/30"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
-              }`}
+                }`}
             >
               <Sparkles size={16} />
               专项智能清理
@@ -151,11 +146,10 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("migrator")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === "migrator"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === "migrator"
                   ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
-              }`}
+                }`}
             >
               <FolderSync size={16} />
               AppData 无损搬家
@@ -163,11 +157,10 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("links")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === "links"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === "links"
                   ? "bg-purple-600 text-white shadow-lg shadow-purple-600/30"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
-              }`}
+                }`}
             >
               <LinkIcon size={16} />
               软链接管理账本
@@ -175,11 +168,10 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("settings")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === "settings"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition ${activeTab === "settings"
                   ? "bg-slate-800 text-white"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
-              }`}
+                }`}
             >
               <Sliders size={16} />
               规则库与设置
