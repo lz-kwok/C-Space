@@ -30,6 +30,30 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   const [hasScanned, setHasScanned] = useState(false);
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null);
   const activeScanIdRef = useRef<string>("");
+  const pendingNodesRef = useRef<Map<string, FileNode>>(new Map());
+  const flushTimerRef = useRef<number | null>(null);
+
+  const flushPendingNodes = () => {
+    if (pendingNodesRef.current.size === 0) return;
+    const incoming = Array.from(pendingNodesRef.current.values());
+    pendingNodesRef.current.clear();
+
+    setNodes((prev) => {
+      const map = new Map<string, FileNode>();
+      for (const n of prev) map.set(n.path, n);
+      for (const n of incoming) map.set(n.path, n);
+      const list = Array.from(map.values()).sort((a, b) => b.size - a.size);
+      return list;
+    });
+  };
+
+  const scheduleFlush = () => {
+    if (flushTimerRef.current !== null) return;
+    flushTimerRef.current = window.setTimeout(() => {
+      flushTimerRef.current = null;
+      flushPendingNodes();
+    }, 120);
+  };
 
   useEffect(() => {
     invoke<DriveInfo[]>("get_drives").then((res) => {
@@ -42,26 +66,29 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
       }
     });
 
-    // 监听渐进式扫描推送事件
+    // 监听渐进式扫描推送事件 (使用节流缓冲，避免高频 IPC 造成前端界面卡顿与 GC 压力)
     const unlisten = listen<ScanProgressEvent>("scan-node-found", (event) => {
       const payload = event.payload;
       if (payload.scanId !== activeScanIdRef.current) return;
 
       if (payload.isDone) {
+        if (flushTimerRef.current !== null) {
+          clearTimeout(flushTimerRef.current);
+          flushTimerRef.current = null;
+        }
+        flushPendingNodes();
         setLoading(false);
         return;
       }
 
-      setNodes((prev) => {
-        // 去重并按大小实时排队插入
-        const filtered = prev.filter((n) => n.path !== payload.node.path);
-        const updated = [...filtered, payload.node];
-        updated.sort((a, b) => b.size - a.size);
-        return updated;
-      });
+      pendingNodesRef.current.set(payload.node.path, payload.node);
+      scheduleFlush();
     });
 
     return () => {
+      if (flushTimerRef.current !== null) {
+        clearTimeout(flushTimerRef.current);
+      }
       unlisten.then((f) => f());
     };
   }, []);
@@ -69,6 +96,12 @@ export const ExplorerView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   const fetchDir = async (path: string) => {
     const scanId = `scan-${Date.now()}`;
     activeScanIdRef.current = scanId;
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    pendingNodesRef.current.clear();
+
     setLoading(true);
     setHasScanned(true);
     setNodes([]); // 清空上一层，准备渐进式填充

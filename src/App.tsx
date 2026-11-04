@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { HardDrive, Sparkles, FolderSync, Link as LinkIcon, Sliders, ShieldAlert, Layers, Copy, LayoutGrid } from "lucide-react";
+import { HardDrive, Sparkles, FolderSync, Link as LinkIcon, Sliders, ShieldAlert, Layers, Copy, Disc3 } from "lucide-react";
 import { ExplorerView } from "./pages/ExplorerView";
 import { TreemapView } from "./pages/TreemapView";
 import { CleanerView } from "./pages/CleanerView";
@@ -109,8 +109,8 @@ export default function App() {
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
               }`}
             >
-              <LayoutGrid size={16} />
-              C 盘空间星系图 (Treemap)
+              <Disc3 size={16} />
+              C 盘空间星系图 (Galaxy)
             </button>
 
             <button

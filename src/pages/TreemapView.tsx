@@ -16,17 +16,25 @@ import {
   Palette,
   Check,
   ChevronRight,
-  Layers,
+  Disc3,
+  LayoutGrid,
+  Sparkles,
 } from "lucide-react";
 import { DriveInfo, FileNode, ScanProgressEvent } from "../types";
 import { formatBytes } from "../utils";
 import {
   TreemapRect,
+  SunburstSector,
   ColorMode,
+  GalaxyViewMode,
   HEATMAP_TIERS,
+  CATEGORY_PALETTE,
   computeSquarifiedTreemap,
   drawTreemapCell,
-  getNodeColor,
+  computeSunburstSectors,
+  drawSunburstWheel,
+  drawStarfield,
+  getNodeColorTheme,
 } from "../utils/treemap";
 
 interface Props {
@@ -40,7 +48,11 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   const [nodes, setNodes] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
+
+  // 视角与着色模式
+  const [viewMode, setViewMode] = useState<GalaxyViewMode>("sunburst");
   const [colorMode, setColorMode] = useState<ColorMode>("heatmap");
+
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null);
   const [hoveredNode, setHoveredNode] = useState<FileNode | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
@@ -48,13 +60,50 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // 数据布局缓存 Ref
   const treemapRectsRef = useRef<TreemapRect<FileNode>[]>([]);
+  const sunburstSectorsRef = useRef<SunburstSector<FileNode>[]>([]);
   const activeScanIdRef = useRef<string>("");
+
+  // 节流批处理缓冲区，杜绝海量 IPC 事件导致的 React 频繁重渲与 GPU 内存爆炸
+  const pendingNodesRef = useRef<Map<string, FileNode>>(new Map());
+  const flushTimerRef = useRef<number | null>(null);
+  const canvasDimensionsRef = useRef<{ width: number; height: number; dpr: number }>({
+    width: 0,
+    height: 0,
+    dpr: 1,
+  });
+
+  const flushPendingNodes = useCallback(() => {
+    if (pendingNodesRef.current.size === 0) return;
+    const incoming = Array.from(pendingNodesRef.current.values());
+    pendingNodesRef.current.clear();
+
+    setNodes((prev) => {
+      const map = new Map<string, FileNode>();
+      for (const n of prev) map.set(n.path, n);
+      for (const n of incoming) map.set(n.path, n);
+      const list = Array.from(map.values()).sort((a, b) => b.size - a.size);
+      return list;
+    });
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current !== null) return;
+    flushTimerRef.current = window.setTimeout(() => {
+      flushTimerRef.current = null;
+      flushPendingNodes();
+    }, 120); // 120ms 丝滑节流合并
+  }, [flushPendingNodes]);
 
   useEffect(() => {
     invoke<DriveInfo[]>("get_drives").then((res) => {
       setDrives(res);
-      if (res.length > 0 && !res.some((d) => currentPath.toUpperCase().startsWith(d.letter.toUpperCase()))) {
+      if (
+        res.length > 0 &&
+        !res.some((d) => currentPath.toUpperCase().startsWith(d.letter.toUpperCase()))
+      ) {
         const first = `${res[0].letter}:\\`;
         setCurrentPath(first);
         setHistory([first]);
@@ -66,26 +115,36 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
       if (payload.scanId !== activeScanIdRef.current) return;
 
       if (payload.isDone) {
+        if (flushTimerRef.current !== null) {
+          clearTimeout(flushTimerRef.current);
+          flushTimerRef.current = null;
+        }
+        flushPendingNodes();
         setLoading(false);
         return;
       }
 
-      setNodes((prev) => {
-        const filtered = prev.filter((n) => n.path !== payload.node.path);
-        const updated = [...filtered, payload.node];
-        updated.sort((a, b) => b.size - a.size);
-        return updated;
-      });
+      pendingNodesRef.current.set(payload.node.path, payload.node);
+      scheduleFlush();
     });
 
     return () => {
+      if (flushTimerRef.current !== null) {
+        clearTimeout(flushTimerRef.current);
+      }
       unlisten.then((f) => f());
     };
-  }, []);
+  }, [currentPath, scheduleFlush, flushPendingNodes]);
 
   const fetchDir = async (path: string) => {
-    const scanId = `treemap-${Date.now()}`;
+    const scanId = `galaxy-${Date.now()}`;
     activeScanIdRef.current = scanId;
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    pendingNodesRef.current.clear();
+
     setLoading(true);
     setHasScanned(true);
     setNodes([]);
@@ -151,7 +210,8 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     const p = currentPath.replace(/\\$/, "");
     const lastSlash = p.lastIndexOf("\\");
     if (lastSlash > 0) {
-      const parent = p.substring(0, lastSlash) + (p.indexOf(":") === lastSlash - 1 ? "\\" : "");
+      const parent =
+        p.substring(0, lastSlash) + (p.indexOf(":") === lastSlash - 1 ? "\\" : "");
       setHistory([...history, parent]);
       setCurrentPath(parent);
       fetchDir(parent);
@@ -173,7 +233,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     fetchDir(target);
   };
 
-  // 渲染 Canvas 树图
+  // 渲染星空与图表
   const renderCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -184,28 +244,77 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     if (width <= 0 || height <= 0) return;
 
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
+    const prevDim = canvasDimensionsRef.current;
+
+    // 仅在真实尺寸发生改变时调整物理 Canvas 分辨率，绝不每帧重置显存缓冲！
+    if (prevDim.width !== width || prevDim.height !== height || prevDim.dpr !== dpr) {
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      canvasDimensionsRef.current = { width, height, dpr };
+    }
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    ctx.save();
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, width, height);
 
-    // 计算矩形排版
-    const rects = computeSquarifiedTreemap(nodes, width, height, 4, colorMode);
-    treemapRectsRef.current = rects;
+    // 1. 绘制深邃宇宙星空背景与微尘
+    drawStarfield(ctx, width, height);
 
-    // 绘制每个单元格
-    for (const rect of rects) {
-      const isHovered = hoveredNode?.path === rect.data.path;
-      const isSelected = selectedNode?.path === rect.data.path;
-      drawTreemapCell(ctx, rect, isHovered, isSelected, colorMode);
+    const totalSize = nodes.reduce((acc, curr) => acc + curr.size, 0);
+
+    // 2. 根据模式进行核心图表渲染
+    if (viewMode === "treemap") {
+      const rects = computeSquarifiedTreemap(nodes, width, height, 6, colorMode);
+      treemapRectsRef.current = rects;
+      sunburstSectorsRef.current = [];
+
+      for (const rect of rects) {
+        const isHovered = hoveredNode?.path === rect.data.path;
+        const isSelected = selectedNode?.path === rect.data.path;
+        drawTreemapCell(ctx, rect, isHovered, isSelected, totalSize);
+      }
+    } else {
+      // 🌌 罗盘模式 (Sunburst Wheel)
+      const cx = width / 2;
+      const cy = height / 2;
+      const minDim = Math.min(width, height);
+      const coreRadius = Math.max(50, minDim * 0.16);
+      const innerRadius = coreRadius + 14;
+      const outerRadius = Math.max(innerRadius + 40, minDim * 0.44);
+
+      const sectors = computeSunburstSectors(
+        nodes,
+        innerRadius,
+        outerRadius,
+        colorMode
+      );
+      sunburstSectorsRef.current = sectors;
+      treemapRectsRef.current = [];
+
+      const hoveredSector = sectors.find((s) => s.data.path === hoveredNode?.path) || null;
+      const selectedSector =
+        sectors.find((s) => s.data.path === selectedNode?.path) || null;
+
+      drawSunburstWheel(
+        ctx,
+        sectors,
+        cx,
+        cy,
+        coreRadius,
+        currentPath,
+        totalSize,
+        hoveredSector,
+        selectedSector
+      );
     }
-  }, [nodes, colorMode, hoveredNode, selectedNode]);
+
+    ctx.restore();
+  }, [nodes, viewMode, colorMode, hoveredNode, selectedNode, currentPath]);
 
   useEffect(() => {
     renderCanvas();
@@ -226,7 +335,46 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     };
   }, [renderCanvas]);
 
-  // 鼠标交互事件处理
+  // 鼠标坐标命中探测 (同时兼容矩形树图与极坐标罗盘扇区)
+  const hitTest = (mouseX: number, mouseY: number): FileNode | null => {
+    if (viewMode === "treemap") {
+      const hit = treemapRectsRef.current.find(
+        (r) =>
+          mouseX >= r.x &&
+          mouseX <= r.x + r.width &&
+          mouseY >= r.y &&
+          mouseY <= r.y + r.height
+      );
+      return hit ? hit.data : null;
+    } else {
+      const container = containerRef.current;
+      if (!container) return null;
+      const cx = container.clientWidth / 2;
+      const cy = container.clientHeight / 2;
+
+      const dx = mouseX - cx;
+      const dy = mouseY - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      // 计算极坐标角度并规范至 [-PI/2, 3PI/2]
+      let angle = Math.atan2(dy, dx);
+
+      for (const s of sunburstSectorsRef.current) {
+        if (dist >= s.innerRadius - 4 && dist <= s.outerRadius + 12) {
+          // 处理角度跨越周期
+          let testAngle = angle;
+          while (testAngle < s.startAngle) testAngle += Math.PI * 2;
+          while (testAngle > s.startAngle + Math.PI * 2) testAngle -= Math.PI * 2;
+
+          if (testAngle >= s.startAngle && testAngle <= s.endAngle) {
+            return s.data;
+          }
+        }
+      }
+      return null;
+    }
+  };
+
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -235,16 +383,9 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     const mouseX = e.clientX - bcr.left;
     const mouseY = e.clientY - bcr.top;
 
-    const hit = treemapRectsRef.current.find(
-      (r) =>
-        mouseX >= r.x &&
-        mouseX <= r.x + r.width &&
-        mouseY >= r.y &&
-        mouseY <= r.y + r.height
-    );
-
+    const hit = hitTest(mouseX, mouseY);
     if (hit) {
-      setHoveredNode(hit.data);
+      setHoveredNode(hit);
       setTooltipPos({ x: e.clientX, y: e.clientY });
     } else {
       setHoveredNode(null);
@@ -265,19 +406,8 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     const mouseX = e.clientX - bcr.left;
     const mouseY = e.clientY - bcr.top;
 
-    const hit = treemapRectsRef.current.find(
-      (r) =>
-        mouseX >= r.x &&
-        mouseX <= r.x + r.width &&
-        mouseY >= r.y &&
-        mouseY <= r.y + r.height
-    );
-
-    if (hit) {
-      setSelectedNode(hit.data);
-    } else {
-      setSelectedNode(null);
-    }
+    const hit = hitTest(mouseX, mouseY);
+    setSelectedNode(hit);
   };
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -288,16 +418,9 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     const mouseX = e.clientX - bcr.left;
     const mouseY = e.clientY - bcr.top;
 
-    const hit = treemapRectsRef.current.find(
-      (r) =>
-        mouseX >= r.x &&
-        mouseX <= r.x + r.width &&
-        mouseY >= r.y &&
-        mouseY <= r.y + r.height
-    );
-
-    if (hit && hit.data.isDir && !hit.data.isLink) {
-      handleDrillDown(hit.data);
+    const hit = hitTest(mouseX, mouseY);
+    if (hit && hit.isDir && !hit.isLink) {
+      handleDrillDown(hit);
     }
   };
 
@@ -331,42 +454,70 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden p-6 space-y-4 select-none">
       {/* 顶部控制栏 */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+      <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 space-y-3 backdrop-blur-xl shadow-xl">
         <div className="flex justify-between items-center flex-wrap gap-4">
           <div>
             <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-              <Layers className="text-cyan-400" size={20} />
-              C 盘空间星系图 · 动态矩形树图 (Squarified Treemap)
+              <Sparkles className="text-cyan-400" size={20} />
+              C 盘空间星系图 · 深空视觉透视
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              高帧率自适应多维空间星系图，支持按体积等比切割与冷热时间热力渲染，双击深入下钻子目录。
+              DaisyDisk 级同心星盘罗盘与极速多核树图，动态解析沉淀冷数据与突发热膨胀，双击下钻探索。
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* 模式切换按钮 */}
-            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+            {/* 视角切换按钮：星盘罗盘 VS 矩阵星系 */}
+            <div className="flex items-center bg-slate-950/80 p-1 rounded-xl border border-slate-800 text-xs">
+              <button
+                onClick={() => setViewMode("sunburst")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
+                  viewMode === "sunburst"
+                    ? "bg-cyan-600 text-white shadow-md shadow-cyan-600/30 font-semibold"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+                title="DaisyDisk 风格同心圆环星系罗盘"
+              >
+                <Disc3 size={13} className={viewMode === "sunburst" ? "animate-spin-slow" : ""} />
+                星盘罗盘
+              </button>
+              <button
+                onClick={() => setViewMode("treemap")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
+                  viewMode === "treemap"
+                    ? "bg-cyan-600 text-white shadow-md shadow-cyan-600/30 font-semibold"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+                title="高利用率毛玻璃矩形星系树图"
+              >
+                <LayoutGrid size={13} />
+                矩阵树图
+              </button>
+            </div>
+
+            {/* 着色模式切换按钮 */}
+            <div className="flex items-center bg-slate-950/80 p-1 rounded-xl border border-slate-800 text-xs">
               <button
                 onClick={() => setColorMode("heatmap")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
                   colorMode === "heatmap"
-                    ? "bg-gradient-to-r from-blue-600 to-amber-600 text-white shadow"
+                    ? "bg-gradient-to-r from-blue-600 to-rose-600 text-white shadow font-semibold"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
                 <Flame size={13} className="text-amber-300" />
-                冷热数据热力
+                冷热热力
               </button>
               <button
                 onClick={() => setColorMode("category")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
                   colorMode === "category"
-                    ? "bg-blue-600 text-white shadow"
+                    ? "bg-indigo-600 text-white shadow font-semibold"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
                 <Palette size={13} />
-                文件类别着色
+                类型着色
               </button>
             </div>
 
@@ -385,7 +536,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
                 className="flex items-center gap-1.5 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-cyan-600/30 transition"
               >
                 <Play size={14} className="fill-current" />
-                {hasScanned ? "重新分析" : "开始透视"}
+                {hasScanned ? "重新透视" : "开始透视"}
               </button>
             )}
 
@@ -450,7 +601,9 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
                   >
                     {h.split("\\").filter(Boolean).pop() || h}
                   </button>
-                  {i < history.length - 1 && <ChevronRight size={12} className="text-slate-600 shrink-0" />}
+                  {i < history.length - 1 && (
+                    <ChevronRight size={12} className="text-slate-600 shrink-0" />
+                  )}
                 </React.Fragment>
               ))}
             </div>
@@ -466,28 +619,28 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
         </div>
       </div>
 
-      {/* 主展示区：Canvas 树图或未扫描就绪面板 */}
+      {/* 主展示区：Canvas 树图或就绪面板 */}
       <div
         ref={containerRef}
-        className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden relative flex flex-col min-h-0"
+        className="flex-1 bg-slate-950 border border-slate-800/80 rounded-2xl overflow-hidden relative flex flex-col min-h-0 shadow-2xl"
       >
         {!hasScanned && !loading && nodes.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-cyan-950/60 border border-cyan-800/40 flex items-center justify-center text-cyan-400 mb-4 shadow-lg shadow-cyan-900/20">
-              <Layers size={32} />
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-radial from-slate-900 to-slate-950">
+            <div className="w-16 h-16 rounded-2xl bg-cyan-950/60 border border-cyan-800/40 flex items-center justify-center text-cyan-400 mb-4 shadow-xl shadow-cyan-900/30">
+              <Disc3 size={32} className="animate-spin-slow" />
             </div>
             <h3 className="text-base font-bold text-slate-100">
-              就绪：空间星系矩形树图
+              就绪：C 盘空间星系探索
             </h3>
             <p className="text-xs text-slate-400 max-w-md mt-2 leading-relaxed">
-              当前目标路径为「{currentPath}」。采用按需触发机制，避免无谓卡顿。点击下方按钮即可利用 GPU 与 Canvas 多维渲染出全比例数据大陆。
+              当前目标路径为「{currentPath}」。采用非侵入多核并行扫描，秒级解析目录体积与冰冻时间。
             </p>
             <button
               onClick={handleStartScan}
               className="mt-6 px-6 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-cyan-600/30 flex items-center gap-2 transition"
             >
               <Play size={15} className="fill-current" />
-              开始生成星系图
+              开始星系透视
             </button>
           </div>
         ) : (
@@ -501,65 +654,82 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
               className="w-full h-full cursor-pointer"
             />
 
-            {/* 悬浮 Tooltip 卡片 */}
+            {/* 扫描中的顶部极简进度浮标 */}
+            {loading && (
+              <div className="absolute top-4 left-4 z-20 flex items-center gap-2.5 px-3 py-1.5 bg-slate-900/90 border border-cyan-500/40 rounded-full text-cyan-300 text-xs backdrop-blur-md shadow-lg">
+                <RefreshCw size={12} className="animate-spin text-cyan-400" />
+                <span>多核并行透视中... ({nodes.length} 个子项)</span>
+              </div>
+            )}
+
+            {/* 悬浮 Tooltip 玻璃卡片 */}
             {hoveredNode && tooltipPos && (
               <div
-                className="fixed pointer-events-none z-50 bg-slate-900/95 border border-slate-700 rounded-xl p-3 shadow-2xl backdrop-blur-md text-xs space-y-1.5 max-w-sm"
+                className="fixed pointer-events-none z-50 bg-slate-900/95 border border-slate-700/80 rounded-2xl p-4 shadow-2xl backdrop-blur-xl text-xs space-y-2 max-w-sm"
                 style={{
-                  left: `${Math.min(tooltipPos.x + 15, window.innerWidth - 300)}px`,
-                  top: `${Math.min(tooltipPos.y + 15, window.innerHeight - 150)}px`,
+                  left: `${Math.min(tooltipPos.x + 18, window.innerWidth - 320)}px`,
+                  top: `${Math.min(tooltipPos.y + 18, window.innerHeight - 200)}px`,
                 }}
               >
-                <div className="font-bold text-slate-100 flex items-center gap-1.5">
-                  <span className="truncate">{hoveredNode.name}</span>
-                  {hoveredNode.isDir && (
-                    <span className="text-[10px] bg-slate-800 text-slate-400 px-1 py-0.2 rounded border border-slate-700">
-                      目录
-                    </span>
-                  )}
-                </div>
-
-                <div className="font-mono text-[11px] text-slate-400 truncate max-w-xs">
-                  {hoveredNode.path}
-                </div>
-
-                <div className="flex justify-between items-center pt-1 border-t border-slate-800 text-slate-300">
-                  <span>体积占用:</span>
-                  <span className="font-mono text-cyan-400 font-bold">
-                    {formatBytes(hoveredNode.size)}
-                    {totalDirSize > 0 && (
-                      <span className="text-[10px] text-slate-500 ml-1">
-                        ({((hoveredNode.size / totalDirSize) * 100).toFixed(1)}%)
-                      </span>
-                    )}
+                <div className="font-bold text-slate-100 flex items-center justify-between gap-2">
+                  <span className="truncate text-sm">{hoveredNode.name}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                    {hoveredNode.isDir ? "📁 目录" : "📄 文件"}
                   </span>
                 </div>
 
-                {hoveredNode.daysSinceModified !== undefined && (
-                  <div className="flex justify-between items-center text-slate-400 text-[11px]">
-                    <span>修改活跃度:</span>
-                    <span
-                      className="font-medium"
-                      style={{
-                        color: getNodeColor(hoveredNode, "heatmap").border,
-                      }}
-                    >
-                      {hoveredNode.daysSinceModified > 180
-                        ? `🧊 极冷数据 (${hoveredNode.daysSinceModified} 天前)`
-                        : hoveredNode.daysSinceModified > 60
-                        ? `❄️ 次冷数据 (${hoveredNode.daysSinceModified} 天前)`
-                        : hoveredNode.daysSinceModified > 14
-                        ? `🌿 温和数据 (${hoveredNode.daysSinceModified} 天前)`
-                        : hoveredNode.daysSinceModified > 3
-                        ? `♨️ 活跃数据 (${hoveredNode.daysSinceModified} 天前)`
-                        : `🔥 高热数据 (近期活跃)`}
+                <div className="font-mono text-[10px] text-slate-400 truncate max-w-xs">
+                  {hoveredNode.path}
+                </div>
+
+                <div className="space-y-1.5 pt-2 border-t border-slate-800">
+                  <div className="flex justify-between items-center text-slate-300">
+                    <span>体积占用:</span>
+                    <span className="font-mono text-cyan-400 font-bold text-sm">
+                      {formatBytes(hoveredNode.size)}
+                      {totalDirSize > 0 && (
+                        <span className="text-[11px] text-slate-500 ml-1.5 font-normal">
+                          ({((hoveredNode.size / totalDirSize) * 100).toFixed(1)}%)
+                        </span>
+                      )}
                     </span>
                   </div>
-                )}
+
+                  {hoveredNode.isDir && (
+                    <div className="flex justify-between items-center text-slate-400 text-[11px]">
+                      <span>内部文件数:</span>
+                      <span className="font-mono text-slate-300">
+                        {hoveredNode.fileCount.toLocaleString()} 个
+                      </span>
+                    </div>
+                  )}
+
+                  {hoveredNode.daysSinceModified !== undefined && (
+                    <div className="flex justify-between items-center text-slate-400 text-[11px]">
+                      <span>修改活跃度:</span>
+                      <span
+                        className="font-medium"
+                        style={{
+                          color: getNodeColorTheme(hoveredNode, "heatmap").accent,
+                        }}
+                      >
+                        {hoveredNode.daysSinceModified > 180
+                          ? `🧊 极寒深冻 (${hoveredNode.daysSinceModified} 天前)`
+                          : hoveredNode.daysSinceModified > 60
+                          ? `❄️ 次冷沉淀 (${hoveredNode.daysSinceModified} 天前)`
+                          : hoveredNode.daysSinceModified > 14
+                          ? `🌿 温和星云 (${hoveredNode.daysSinceModified} 天前)`
+                          : hoveredNode.daysSinceModified > 3
+                          ? `☀️ 活跃恒星 (${hoveredNode.daysSinceModified} 天前)`
+                          : `🔥 超热耀斑 (近期活跃)`}
+                      </span>
+                    </div>
+                  )}
+                </div>
 
                 {hoveredNode.isDir && !hoveredNode.isLink && (
-                  <div className="pt-1 text-[10px] text-cyan-300/80">
-                    💡 双击深入查看此文件夹内部分布
+                  <div className="pt-2 border-t border-slate-800/80 text-[10px] text-cyan-300/90 flex items-center gap-1">
+                    <span>💡</span> 双击深入查看此文件夹内部星系分布
                   </div>
                 )}
               </div>
@@ -569,12 +739,15 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
       </div>
 
       {/* 底部信息与图例栏 */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 flex justify-between items-center text-xs flex-wrap gap-3">
+      <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl px-4 py-2.5 flex justify-between items-center text-xs flex-wrap gap-3 backdrop-blur-xl">
         {/* 选中项快捷操作栏 */}
         {selectedNode ? (
           <div className="flex items-center gap-3">
             <span className="text-slate-400 font-medium">当前选中:</span>
-            <span className="font-mono text-slate-200 truncate max-w-xs" title={selectedNode.path}>
+            <span
+              className="font-mono text-slate-200 truncate max-w-xs font-semibold"
+              title={selectedNode.path}
+            >
               {selectedNode.name} ({formatBytes(selectedNode.size)})
             </span>
 
@@ -598,7 +771,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
               {selectedNode.migratable && onNavigateToMigrate && (
                 <button
                   onClick={() => onNavigateToMigrate(selectedNode.path)}
-                  className="px-2 py-1 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-lg text-[11px] font-semibold transition flex items-center gap-1"
+                  className="px-2.5 py-1 bg-indigo-600/90 hover:bg-indigo-600 text-white rounded-lg text-[11px] font-semibold transition flex items-center gap-1 shadow-md shadow-indigo-600/30"
                 >
                   <ExternalLink size={12} />
                   无损搬家
@@ -616,46 +789,89 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
           </div>
         ) : (
           <div className="text-slate-500 text-xs">
-            单击任意色块查看详情与快捷操作，双击可深入下钻子目录
+            单击任意星系区域查看详情与快捷操作，双击可深入下钻子目录
           </div>
         )}
 
         {/* 色彩图例 */}
         {colorMode === "heatmap" ? (
-          <div className="flex items-center gap-3 text-[11px] text-slate-400">
-            <span className="text-slate-500">图例:</span>
+          <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
+            <span className="text-slate-500">冷热图例:</span>
             {HEATMAP_TIERS.map((tier) => (
               <span key={tier.label} className="flex items-center gap-1">
                 <span
                   className="w-2.5 h-2.5 rounded-sm"
-                  style={{ backgroundColor: tier.color, border: `1px solid ${tier.borderColor}` }}
+                  style={{
+                    backgroundColor: tier.bgFrom,
+                    border: `1px solid ${tier.border}`,
+                  }}
                 />
-                <span style={{ color: tier.textColor }}>{tier.label.split(" ")[0]}</span>
+                <span style={{ color: tier.textColor }}>{tier.badge}</span>
               </span>
             ))}
           </div>
         ) : (
-          <div className="flex items-center gap-3 text-[11px] text-slate-400">
-            <span className="text-slate-500">类别:</span>
+          <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
+            <span className="text-slate-500">类型图例:</span>
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm bg-purple-700 border border-purple-400" />
-              <span>镜像</span>
+              <span
+                className="w-2.5 h-2.5 rounded-sm"
+                style={{
+                  backgroundColor: CATEGORY_PALETTE.disk_image.bgFrom,
+                  border: `1px solid ${CATEGORY_PALETTE.disk_image.border}`,
+                }}
+              />
+              <span style={{ color: CATEGORY_PALETTE.disk_image.textColor }}>虚拟镜像</span>
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm bg-pink-700 border border-pink-400" />
-              <span>AI模型</span>
+              <span
+                className="w-2.5 h-2.5 rounded-sm"
+                style={{
+                  backgroundColor: CATEGORY_PALETTE.model.bgFrom,
+                  border: `1px solid ${CATEGORY_PALETTE.model.border}`,
+                }}
+              />
+              <span style={{ color: CATEGORY_PALETTE.model.textColor }}>AI模型</span>
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm bg-sky-700 border border-sky-400" />
-              <span>媒体</span>
+              <span
+                className="w-2.5 h-2.5 rounded-sm"
+                style={{
+                  backgroundColor: CATEGORY_PALETTE.media.bgFrom,
+                  border: `1px solid ${CATEGORY_PALETTE.media.border}`,
+                }}
+              />
+              <span style={{ color: CATEGORY_PALETTE.media.textColor }}>音视频</span>
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm bg-amber-700 border border-amber-400" />
-              <span>压缩包</span>
+              <span
+                className="w-2.5 h-2.5 rounded-sm"
+                style={{
+                  backgroundColor: CATEGORY_PALETTE.archive.bgFrom,
+                  border: `1px solid ${CATEGORY_PALETTE.archive.border}`,
+                }}
+              />
+              <span style={{ color: CATEGORY_PALETTE.archive.textColor }}>压缩包</span>
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm bg-indigo-700 border border-indigo-400" />
-              <span>缓存</span>
+              <span
+                className="w-2.5 h-2.5 rounded-sm"
+                style={{
+                  backgroundColor: CATEGORY_PALETTE.executable.bgFrom,
+                  border: `1px solid ${CATEGORY_PALETTE.executable.border}`,
+                }}
+              />
+              <span style={{ color: CATEGORY_PALETTE.executable.textColor }}>程序组件</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <span
+                className="w-2.5 h-2.5 rounded-sm"
+                style={{
+                  backgroundColor: CATEGORY_PALETTE.cache.bgFrom,
+                  border: `1px solid ${CATEGORY_PALETTE.cache.border}`,
+                }}
+              />
+              <span style={{ color: CATEGORY_PALETTE.cache.textColor }}>系统缓存</span>
             </span>
           </div>
         )}
