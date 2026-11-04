@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "c-space"
 version = "1.1.0"
 description = "C 盘清理与迁移工具"
@@ -30,6 +30,7 @@ windows-sys = { version = "0.59", features = [
   "Win32_Security",
   "Win32_Storage_FileSystem",
   "Win32_System_IO",
+  "Win32_System_Registry",
   "Win32_System_RestartManager",
   "Win32_System_Threading",
   "Win32_System_Diagnostics_ToolHelp",

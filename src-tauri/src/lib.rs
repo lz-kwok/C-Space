@@ -9,6 +9,7 @@ mod rules;
 mod scanner;
 mod winapi;
 mod mft;
+mod social;
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,6 +24,11 @@ use migrator::{execute_migration, precheck_migration, rollback_migration, Migrat
 use rules::{get_all_rules, get_clean_targets, get_migrate_targets, load_rules, ResolvedTarget, Rule};
 use scanner::{scan_dir_level_progressive, FileNode, ScanContext};
 use winapi::{is_elevated, kill_process, list_drives, relaunch_as_admin, DriveInfo};
+use social::{
+    detect_wechat, detect_wxwork, detect_qq, scan_account_assets, filter_archive_media,
+    archive_media_files, deduplicate_via_hardlink, clean_cache_dirs, SocialAppInfo,
+    SocialAssetSummary, MediaArchiveItem, ArchiveResult, SocialDuplicateGroup,
+};
 
 #[tauri::command]
 fn check_elevation() -> bool {
@@ -44,6 +50,46 @@ fn get_rules() -> Vec<Rule> {
     get_all_rules()
 }
 
+#[tauri::command]
+fn get_social_apps() -> Vec<SocialAppInfo> {
+    vec![
+        detect_wechat(),
+        detect_wxwork(),
+        detect_qq(),
+    ]
+}
+
+#[tauri::command]
+fn scan_social_assets(account_path: String) -> SocialAssetSummary {
+    let cancel = Arc::new(AtomicBool::new(false));
+    scan_account_assets(&account_path, &cancel)
+}
+
+#[tauri::command]
+fn filter_social_media(account_path: String, months: u32) -> Vec<MediaArchiveItem> {
+    filter_archive_media(&account_path, months)
+}
+
+#[tauri::command]
+fn archive_social_media(files: Vec<String>, target_root: String) -> ArchiveResult {
+    archive_media_files(files, &target_root)
+}
+
+#[tauri::command]
+fn scan_social_duplicates(account_path: String) -> Vec<SocialDuplicateGroup> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    social::scan_social_duplicates(&account_path, &cancel)
+}
+
+#[tauri::command]
+fn hardlink_social_duplicate(primary_file: String, duplicate_files: Vec<String>) -> Result<u64, String> {
+    deduplicate_via_hardlink(&primary_file, &duplicate_files)
+}
+
+#[tauri::command]
+fn clean_social_caches(cache_paths: Vec<String>) -> (u64, u32) {
+    clean_cache_dirs(&cache_paths)
+}
 #[tauri::command]
 fn scan_partition_mft(path: String) -> Result<Vec<FileNode>, String> {
     let drive_letter = path
@@ -330,6 +376,13 @@ pub fn run() {
             open_in_explorer,
             scan_partition_mft,
             clear_mft_cache,
+            get_social_apps,
+            scan_social_assets,
+            filter_social_media,
+            archive_social_media,
+            scan_social_duplicates,
+            hardlink_social_duplicate,
+            clean_social_caches,
         ])
         .run(tauri::generate_context!())
         .expect("error while running C-Space tauri application");
