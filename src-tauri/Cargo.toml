@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "c-space"
 version = "1.1.0"
 description = "C 盘清理与迁移工具"
