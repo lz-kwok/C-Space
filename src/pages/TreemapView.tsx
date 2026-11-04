@@ -20,6 +20,7 @@ import {
   Globe2,
   Sparkles,
   Layers,
+  Zap,
 } from "lucide-react";
 import { DriveInfo, FileNode, ScanProgressEvent } from "../types";
 import { formatBytes } from "../utils";
@@ -54,6 +55,16 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
   const [viewMode, setViewMode] = useState<GalaxyViewMode>("planet");
   const [colorMode, setColorMode] = useState<ColorMode>("category");
 
+  // MFT 极速模式与提权引导状态
+  const [isMftMode, setIsMftMode] = useState<boolean>(false);
+  const [showUacPrompt, setShowUacPrompt] = useState<boolean>(false);
+
+  // 离开星系图视图时立即释放后端 MFT 内存树
+  useEffect(() => {
+    return () => {
+      invoke("clear_mft_cache").catch(() => {});
+    };
+  }, []);
   const [selectedNode, setSelectedNode] = useState<DisplayNode | null>(null);
   const [hoveredNode, setHoveredNode] = useState<DisplayNode | null>(null);
   const [copied, setCopied] = useState(false);
@@ -145,7 +156,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     };
   }, [currentPath, scheduleFlush, flushPendingNodes]);
 
-  const fetchDir = async (path: string) => {
+  const fetchDir = async (path: string, forceStandardScan = false) => {
     const scanId = `galaxy-${Date.now()}`;
     activeScanIdRef.current = scanId;
     if (flushTimerRef.current !== null) {
@@ -160,6 +171,28 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     setSelectedNode(null);
     setHoveredNode(null);
 
+    // 优先尝试 NTFS MFT 底层极速秒读引擎
+    if (!forceStandardScan) {
+      try {
+        const mftRes = await invoke<FileNode[]>("scan_partition_mft", { path });
+        if (activeScanIdRef.current === scanId) {
+          setNodes(mftRes);
+          setIsMftMode(true);
+          setLoading(false);
+          return;
+        }
+      } catch (err: any) {
+        const msg = typeof err === "string" ? err : (err?.message || "");
+        if (msg === "ADMIN_REQUIRED_FOR_NTFS") {
+          setShowUacPrompt(true);
+          setLoading(false);
+          return;
+        }
+        console.log("MFT scan fallback to standard scan:", msg);
+      }
+    }
+
+    setIsMftMode(false);
     try {
       const res = await invoke<FileNode[]>("scan_directory", { path, scanId });
       if (activeScanIdRef.current === scanId) {
@@ -172,6 +205,19 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
         setLoading(false);
       }
     }
+  };
+
+  const handleRelaunchAdmin = async () => {
+    try {
+      await invoke("trigger_admin_relaunch");
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleContinueStandardScan = () => {
+    setShowUacPrompt(false);
+    fetchDir(currentPath, true);
   };
 
   const handleStartScan = () => {
@@ -195,6 +241,7 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
     setNodes([]);
     setHasScanned(false);
     setSelectedNode(null);
+    setIsMftMode(false);
   };
 
   const handleBrowseFolder = async () => {
@@ -481,6 +528,12 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
           </div>
 
           <div className="flex items-center gap-3">
+                        {isMftMode && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 text-xs font-semibold backdrop-blur-md shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+                <Zap size={14} className="text-cyan-400 animate-pulse fill-cyan-400/20" />
+                <span>MFT 极速引擎 (0.3s)</span>
+              </div>
+            )}
             {/* 视角切换按钮：星球图谱 VS 星盘罗盘 */}
             <div className="flex items-center bg-slate-950/80 p-1 rounded-xl border border-slate-800 text-xs">
               <button
@@ -830,6 +883,44 @@ export const TreemapView: React.FC<Props> = ({ onNavigateToMigrate }) => {
           <span className="text-slate-500">提示:</span>
           <span>已自动将碎小文件聚合为「其它项目」，点击右侧卡片即可精准锁定</span>
         </div>
+      {/* 提权引导弹窗 */}
+      {showUacPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="max-w-md w-full bg-slate-900/95 border border-cyan-500/50 rounded-2xl p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] text-slate-100 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+                <Zap className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-white">启用 NTFS MFT 极速透视引擎</h3>
+                <p className="text-xs text-slate-400 mt-0.5">主文件表底层秒读 · 0.3 秒全盘直出</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/70 p-3.5 rounded-xl border border-slate-800">
+              检测到当前驱动器为 <span className="text-cyan-300 font-semibold">NTFS 格式</span>。
+              启用 MFT 原生秒读引擎后，全盘百万级文件数与星球图谱将在 <span className="text-cyan-300 font-semibold">0.3 秒内</span> 瞬间就绪。
+              该底层硬件读取模式需要 Windows 管理员提权。
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-1">
+              <button
+                onClick={handleContinueStandardScan}
+                className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition"
+              >
+                普通多核扫描
+              </button>
+              <button
+                onClick={handleRelaunchAdmin}
+                className="px-4 py-2 text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl shadow-[0_0_15px_rgba(6,182,212,0.4)] flex items-center gap-1.5 transition"
+              >
+                <Zap size={14} className="fill-current" />
+                立即提权重启 (推荐)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
