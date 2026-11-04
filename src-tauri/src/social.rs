@@ -30,6 +30,7 @@ use crate::winapi::wide;
 pub enum SocialAppType {
     WeChat,
     WXWork,
+    DingTalk,
     QQ,
 }
 
@@ -114,6 +115,20 @@ pub struct SocialDuplicateGroup {
     pub size_each: u64,
     pub wasted_bytes: u64,
     pub files: Vec<String>,
+}
+
+/// 社交缓存文件夹详细业务作用解析
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SocialFolderDetail {
+    pub path: String,
+    pub folder_name: String,
+    pub size: u64,
+    pub file_count: u64,
+    pub purpose_title: String,
+    pub purpose_desc: String,
+    pub risk_level: String, // "safe" | "caution" | "protected"
+    pub action_recommendation: String,
 }
 
 /// 硬链接去重结果
@@ -367,6 +382,86 @@ pub fn detect_qq() -> SocialAppInfo {
     }
 }
 
+/// 自动探测钉钉数据目录
+pub fn detect_dingtalk() -> SocialAppInfo {
+    let mut data_root: Option<PathBuf> = None;
+    let mut installed = false;
+
+    #[cfg(windows)]
+    {
+        if let Some(val) = get_registry_string(HKEY_CURRENT_USER, r"Software\DingTalk", "FileSavePath") {
+            installed = true;
+            let val = val.trim();
+            if !val.is_empty() {
+                let p = PathBuf::from(val);
+                if p.exists() {
+                    data_root = Some(p);
+                }
+            }
+        }
+        if data_root.is_none() {
+            if let Some(val) = get_registry_string(HKEY_CURRENT_USER, r"Software\Alibaba\DingTalk", "InstallPath") {
+                installed = true;
+                let p = PathBuf::from(val.trim());
+                if p.exists() {
+                    // 标记已安装
+                }
+            }
+        }
+    }
+
+    if data_root.is_none() {
+        if let Some(docs) = get_user_documents_dir() {
+            let candidate1 = docs.join("DingTalk");
+            let candidate2 = docs.join("钉钉");
+            if candidate1.exists() {
+                data_root = Some(candidate1);
+                installed = true;
+            } else if candidate2.exists() {
+                data_root = Some(candidate2);
+                installed = true;
+            }
+        }
+    }
+
+    if data_root.is_none() {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let candidate = Path::new(&appdata).join("DingTalk");
+            if candidate.exists() {
+                data_root = Some(candidate);
+                installed = true;
+            }
+        }
+    }
+
+    if data_root.is_none() {
+        for drive in ["D", "E", "F"] {
+            let candidate = PathBuf::from(format!(r"{}:\DingTalk", drive));
+            if candidate.exists() {
+                data_root = Some(candidate);
+                installed = true;
+                break;
+            }
+        }
+    }
+
+    let root = data_root.unwrap_or_else(|| {
+        get_user_documents_dir()
+            .map(|d| d.join("DingTalk"))
+            .unwrap_or_else(|| PathBuf::from(r"C:\Users\Default\Documents\DingTalk"))
+    });
+
+    let accounts = find_accounts(&root, SocialAppType::DingTalk);
+
+    SocialAppInfo {
+        app_type: SocialAppType::DingTalk,
+        name: "钉钉 (DingTalk)".into(),
+        is_installed: installed || root.exists(),
+        data_root: root.to_string_lossy().to_string(),
+        accounts,
+    }
+}
+
 /// 寻找目录下的有效登录账号
 fn find_accounts(root: &Path, app: SocialAppType) -> Vec<SocialAccountInfo> {
     let mut accounts = Vec::new();
@@ -403,6 +498,15 @@ fn find_accounts(root: &Path, app: SocialAppType) -> Vec<SocialAccountInfo> {
             }
             SocialAppType::QQ => {
                 if name.eq_ignore_ascii_case("All Users") {
+                    continue;
+                }
+            }
+            SocialAppType::DingTalk => {
+                if name.eq_ignore_ascii_case("Global")
+                    || name.eq_ignore_ascii_case("Temp")
+                    || name.eq_ignore_ascii_case("CrashReports")
+                    || name.eq_ignore_ascii_case("cache")
+                {
                     continue;
                 }
             }
@@ -830,3 +934,202 @@ pub fn clean_cache_dirs(cache_paths: &[String]) -> (u64, u32) {
 
     (freed_bytes, deleted_files)
 }
+
+// -------------------------------------------------------------------------------------------------
+// 文件夹作用深度语义分析器
+// -------------------------------------------------------------------------------------------------
+
+/// 分析单个子目录的业务用途、描述、风险等级与建议操作
+pub fn analyze_social_subfolder(folder_name: &str, full_path: &str) -> (String, String, String, String) {
+    let lower_name = folder_name.to_lowercase();
+    let lower_path = full_path.to_lowercase();
+
+    // 1. 核心聊天记录数据库
+    if lower_name == "msg" || lower_name == "db" || lower_name == "database" || lower_path.contains(r"\msg") || lower_path.contains("/msg") {
+        return (
+            "核心聊天记录与联系人数据库".into(),
+            "保存文字聊天记录、联系人关系网与全文检索索引的 SQLite 加密核心库。底层物理隔离，严禁删除。".into(),
+            "protected".into(),
+            "🛡️ 核心数据库已物理隔离保护".into(),
+        );
+    }
+
+    // 2. 朋友圈动态多媒体缓存
+    if lower_name == "sns" || lower_path.contains(r"\sns") {
+        return (
+            "朋友圈动态多媒体离线缓存".into(),
+            "浏览朋友圈时下载的图片与短视频离线缓存。清理后不影响任何聊天记录，再次打开朋友圈会自动按需拉取。".into(),
+            "safe".into(),
+            "建议一键清空 (0风险)".into(),
+        );
+    }
+
+    // 3. 小程序离线组件包
+    if lower_name == "applet" || lower_name == "wmpf" || lower_name == "miniapp" || lower_path.contains(r"\applet") {
+        return (
+            "小程序离线代码与运行时组件包".into(),
+            "打开各个第三方小程序时下载的前端代码包与运行时依赖，占用大量碎文件。清理后不影响主程序，可随时重新拉取。".into(),
+            "safe".into(),
+            "建议一键清空 (0风险)".into(),
+        );
+    }
+
+    // 4. 预览与拖拽中转临时文件
+    if lower_name == "temp" || lower_name == "attachmenttemp" || lower_path.contains(r"\temp") || lower_path.contains(r"\attachmenttemp") {
+        return (
+            "预览与拖拽中转临时缓存".into(),
+            "聊天中双击快速预览图片、文档或拖拽发送时生成的临时快照文件，清理后对聊天历史无任何影响。".into(),
+            "safe".into(),
+            "建议一键清空 (0风险)".into(),
+        );
+    }
+
+    // 5. 内置浏览器/Chromium 内核网页缓存
+    if lower_name == "ebwebview" || lower_name == "cef_cache" || lower_name == "cache" || lower_name == "web_cache"
+        || lower_name == "gpucache" || lower_name == "code cache" || lower_name == "dawncache" {
+        return (
+            "内置 Chromium/CEF 内核网页渲染缓存".into(),
+            "阅读公众号文章、钉钉工作台应用、OA 审批系统内嵌网页时生成的浏览器内核缓存，无个人重要资产。".into(),
+            "safe".into(),
+            "建议一键清空 (0风险)".into(),
+        );
+    }
+
+    // 6. 运行日志与崩溃转储
+    if lower_name == "log" || lower_name == "logs" || lower_name == "crashdump" || lower_name == "crashreports" || lower_name == "dump" {
+        return (
+            "运行诊断日志与崩溃转储记录".into(),
+            "客户端日常运行产生的纯文本日志与异常崩溃转储文件，无业务保留价值。".into(),
+            "safe".into(),
+            "建议一键清空 (0风险)".into(),
+        );
+    }
+
+    // 7. 自定义与收藏表情
+    if lower_name == "customemotion" || lower_name == "emotion" {
+        return (
+            "自定义收藏表情包与动图资产".into(),
+            "个人收藏和群聊接收的各类表情包、GIF 动图与贴纸资产。建议根据个人喜好保留。".into(),
+            "caution".into(),
+            "用户表情资产 (按需保留)".into(),
+        );
+    }
+
+    // 8. 联系人与群头像缓存
+    if lower_name == "avatar" || lower_name == "headimage" {
+        return (
+            "联系人与群成员头像离线缓存".into(),
+            "好友列表与群成员的头像缩略图本地缓存，清理后重新登录会自动拉取更新。".into(),
+            "safe".into(),
+            "安全缓存 (可清空)".into(),
+        );
+    }
+
+    // 9. 聊天音视频
+    if lower_name == "video" || lower_path.contains(r"\video") {
+        return (
+            "群聊与私聊高清音视频资产".into(),
+            "群聊及私聊中接收与发送的高清视频、语音消息，通常是占用磁盘数十GB的最大元凶，包含珍贵回忆与工作记录。".into(),
+            "caution".into(),
+            "建议时间分期归档至 D 盘".into(),
+        );
+    }
+
+    // 10. 聊天图片与原图
+    if lower_name == "image" || lower_path.contains(r"\image") {
+        return (
+            "聊天高清原图与缩略图资产".into(),
+            "好友与工作群发送的各格式图片原图与缩略图，包含大量生活照与工作业务凭据。".into(),
+            "caution".into(),
+            "建议保留或按需归档".into(),
+        );
+    }
+
+    // 11. 接收文档与群文件
+    if lower_name == "file" || lower_name == "filerecv" || lower_name == "download" || lower_path.contains(r"\file") || lower_path.contains(r"\filerecv") {
+        return (
+            "接收文档与各群文件资产".into(),
+            "工作群与好友接收的 PDF、Office 文档、安装包等，极易在多个工作群中被重复下载多次。".into(),
+            "caution".into(),
+            "建议进行多群硬链接去重".into(),
+        );
+    }
+
+    // 默认兜底
+    (
+        format!("{} 业务运行数据", folder_name),
+        "应用程序在运行期间生成的模块数据或用户本地个性化配置项。".into(),
+        "caution".into(),
+        "保持默认".into(),
+    )
+}
+
+/// 深度分析指定账号目录下的所有子文件夹作用与占用
+pub fn analyze_account_folders(account_path: &str) -> Vec<SocialFolderDetail> {
+    let mut details = Vec::new();
+    let root = Path::new(account_path);
+    if !root.exists() || !root.is_dir() {
+        return details;
+    }
+
+    let Ok(entries) = fs::read_dir(root) else {
+        return details;
+    };
+
+    let cancel = Arc::new(AtomicBool::new(false));
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let name = entry.file_name().to_string_lossy().to_string();
+        let path_str = path.to_string_lossy().to_string();
+
+        // 如果是 FileStorage 容器目录，则深入一层分析 Video, Image, File, Cache
+        if name.eq_ignore_ascii_case("FileStorage") {
+            if let Ok(sub_entries) = fs::read_dir(&path) {
+                for sub in sub_entries.flatten() {
+                    let sub_p = sub.path();
+                    if sub_p.is_dir() {
+                        let sub_name = sub.file_name().to_string_lossy().to_string();
+                        let sub_path_str = sub_p.to_string_lossy().to_string();
+                        let (size, files) = crate::scanner::calc_dir_size_fast(&sub_p, &cancel);
+                        let (p_title, p_desc, r_level, a_rec) = analyze_social_subfolder(&sub_name, &sub_path_str);
+                        details.push(SocialFolderDetail {
+                            path: sub_path_str,
+                            folder_name: format!("FileStorage\\{}", sub_name),
+                            size,
+                            file_count: files,
+                            purpose_title: p_title,
+                            purpose_desc: p_desc,
+                            risk_level: r_level,
+                            action_recommendation: a_rec,
+                        });
+                    }
+                }
+            }
+            continue;
+        }
+
+        let (size, files) = crate::scanner::calc_dir_size_fast(&path, &cancel);
+        let (p_title, p_desc, r_level, a_rec) = analyze_social_subfolder(&name, &path_str);
+
+        details.push(SocialFolderDetail {
+            path: path_str,
+            folder_name: name,
+            size,
+            file_count: files,
+            purpose_title: p_title,
+            purpose_desc: p_desc,
+            risk_level: r_level,
+            action_recommendation: a_rec,
+        });
+    }
+
+    // 按体积降序排列
+    details.sort_by(|a, b| b.size.cmp(&a.size));
+    details
+}
+

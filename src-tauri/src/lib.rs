@@ -1,4 +1,4 @@
-﻿//! Tauri 命令注册与主入口
+//! Tauri 命令注册与主入口
 
 mod analyzer;
 mod cleaner;
@@ -25,9 +25,9 @@ use rules::{get_all_rules, get_clean_targets, get_migrate_targets, load_rules, R
 use scanner::{scan_dir_level_progressive, FileNode, ScanContext};
 use winapi::{is_elevated, kill_process, list_drives, relaunch_as_admin, DriveInfo};
 use social::{
-    detect_wechat, detect_wxwork, detect_qq, scan_account_assets, filter_archive_media,
-    archive_media_files, deduplicate_via_hardlink, clean_cache_dirs, SocialAppInfo,
-    SocialAssetSummary, MediaArchiveItem, ArchiveResult, SocialDuplicateGroup,
+    detect_wechat, detect_wxwork, detect_dingtalk, detect_qq, scan_account_assets, filter_archive_media,
+    archive_media_files, deduplicate_via_hardlink, clean_cache_dirs, analyze_account_folders, SocialAppInfo,
+    SocialAssetSummary, MediaArchiveItem, ArchiveResult, SocialDuplicateGroup, SocialFolderDetail,
 };
 
 #[tauri::command]
@@ -55,8 +55,14 @@ fn get_social_apps() -> Vec<SocialAppInfo> {
     vec![
         detect_wechat(),
         detect_wxwork(),
+        detect_dingtalk(),
         detect_qq(),
     ]
+}
+
+#[tauri::command]
+fn analyze_social_folders(account_path: String) -> Vec<SocialFolderDetail> {
+    analyze_account_folders(&account_path)
 }
 
 #[tauri::command]
@@ -383,6 +389,7 @@ pub fn run() {
             scan_social_duplicates,
             hardlink_social_duplicate,
             clean_social_caches,
+            analyze_social_folders,
         ])
         .run(tauri::generate_context!())
         .expect("error while running C-Space tauri application");
