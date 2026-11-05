@@ -240,3 +240,14 @@ export interface SocialFolderDetail {
   riskLevel: "safe" | "caution" | "protected" | string;
   actionRecommendation: string;
 }
+
+export interface DiscoveredSocialCache {
+  appType: SocialAppType;
+  appName: string;
+  dataRoot: string;
+  totalBytes: number;
+  fileCount: number;
+  matchReason: string;
+  accounts: SocialAccountInfo[];
+  folders: SocialFolderDetail[];
+}

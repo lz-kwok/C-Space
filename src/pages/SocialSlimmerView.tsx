@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   ShieldCheck,
   HardDrive,
@@ -23,6 +24,7 @@ import {
   UserCheck,
   Send,
   FolderSearch,
+  Search,
 } from "lucide-react";
 import {
   SocialAppInfo,
@@ -34,6 +36,7 @@ import {
   SocialDuplicateGroup,
   DriveInfo,
   SocialFolderDetail,
+  DiscoveredSocialCache,
 } from "../types";
 import { formatBytes } from "../utils";
 
@@ -41,6 +44,12 @@ export const SocialSlimmerView: React.FC = () => {
   const [apps, setApps] = useState<SocialAppInfo[]>([]);
   const [selectedAppType, setSelectedAppType] = useState<SocialAppType>("weChat");
   const [selectedAccount, setSelectedAccount] = useState<SocialAccountInfo | null>(null);
+  // 磁盘选择与主动扫描状态
+  const [drives, setDrives] = useState<DriveInfo[]>([]);
+  const [selectedDrive, setSelectedDrive] = useState<string>("C");
+  const [isScanningDisk, setIsScanningDisk] = useState<boolean>(false);
+  const [discoveredCaches, setDiscoveredCaches] = useState<DiscoveredSocialCache[]>([]);
+  const [activeDiscovered, setActiveDiscovered] = useState<DiscoveredSocialCache | null>(null);
 
   // 资产解构数据
   const [loading, setLoading] = useState<boolean>(false);
@@ -79,6 +88,8 @@ export const SocialSlimmerView: React.FC = () => {
         invoke<DriveInfo[]>("get_drives"),
       ]);
       setApps(appData);
+      setDrives(driveData);
+      if (driveData.length > 0) setSelectedDrive(driveData[0].letter);
 
       // 默认推荐非 C 盘中剩余空间最大的盘作为归档盘
       const nonCDrives = driveData.filter((d) => !d.letter.toUpperCase().startsWith("C"));
@@ -179,6 +190,66 @@ export const SocialSlimmerView: React.FC = () => {
       console.error("深度解析文件夹作用失败:", e);
     } finally {
       setIsLoadingFolders(false);
+    }
+  };
+
+  // 扫描指定磁盘上的社交缓存
+  const handleScanSelectedDisk = async () => {
+    setIsScanningDisk(true);
+    try {
+      const res = await invoke<DiscoveredSocialCache[]>("scan_disk_for_social_caches", {
+        drive: selectedDrive,
+      });
+      setDiscoveredCaches(res);
+      if (res.length > 0) {
+        handleSelectDiscoveredCache(res[0]);
+      } else {
+        alert(`在 ${selectedDrive} 盘未扫描到明显的社交软件特征目录。建议尝试切换其他磁盘，或点击右侧「手动指定缓存目录」直接定位。`);
+      }
+    } catch (e) {
+      console.error("全盘扫描社交缓存失败:", e);
+      alert(`扫描失败: ${e}`);
+    } finally {
+      setIsScanningDisk(false);
+    }
+  };
+
+  // 手动浏览选择任意社交缓存目录
+  const handleBrowseCustomPath = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "选择微信、钉钉、企微或 QQ 的数据存储文件夹",
+      });
+      if (selected && typeof selected === "string") {
+        const res = await invoke<DiscoveredSocialCache>("analyze_custom_social_path_cmd", {
+          path: selected,
+        });
+        setDiscoveredCaches((prev) => [res, ...prev.filter((c) => c.dataRoot !== res.dataRoot)]);
+        handleSelectDiscoveredCache(res);
+      }
+    } catch (e) {
+      console.error("手动指定目录解析失败:", e);
+      alert(`解析自定义路径失败: ${e}`);
+    }
+  };
+
+  // 选中某条已发现或指定的缓存目录
+  const handleSelectDiscoveredCache = (item: DiscoveredSocialCache) => {
+    setActiveDiscovered(item);
+    setSelectedAppType(item.appType);
+    if (item.accounts.length > 0) {
+      selectAccountAndScan(item.accounts[0]);
+    } else {
+      const fallbackAccount: SocialAccountInfo = {
+        accountId: item.dataRoot.split("\\").pop() || "Root",
+        displayName: item.appName,
+        path: item.dataRoot,
+        totalBytes: item.totalBytes,
+      };
+      setSelectedAccount(fallbackAccount);
+      loadFolderDetails(item.dataRoot);
     }
   };
 
@@ -344,6 +415,87 @@ export const SocialSlimmerView: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* 磁盘选择与主动扫描控制带 */}
+        <div className="pt-2.5 border-t border-slate-800/60 flex items-center justify-between gap-3 flex-wrap text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-slate-400 font-medium flex items-center gap-1">
+              <HardDrive size={13} />
+              选择目标磁盘:
+            </span>
+            <div className="flex items-center bg-slate-950/80 p-0.5 rounded-lg border border-slate-800">
+              {drives.map((d) => (
+                <button
+                  key={d.letter}
+                  onClick={() => setSelectedDrive(d.letter)}
+                  className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition ${
+                    selectedDrive.toUpperCase() === d.letter.toUpperCase()
+                      ? "bg-cyan-600 text-white shadow-sm font-bold"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {d.letter}: ({formatBytes(d.free)} 剩余)
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={handleScanSelectedDisk}
+              disabled={isScanningDisk}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+                !isScanningDisk
+                  ? "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-md shadow-cyan-600/25"
+                  : "bg-slate-800 text-slate-500 cursor-not-allowed"
+              }`}
+            >
+              {isScanningDisk ? (
+                <>
+                  <RefreshCw className="animate-spin" size={13} />
+                  正在深度检索 {selectedDrive} 盘社交特征...
+                </>
+              ) : (
+                <>
+                  <Search size={13} />
+                  扫描 {selectedDrive} 盘社交缓存
+                </>
+              )}
+            </button>
+          </div>
+
+          <button
+            onClick={handleBrowseCustomPath}
+            className="px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium flex items-center gap-1.5 border border-slate-700/60 transition"
+            title="选择您自行安装或移动过的微信/钉钉/企微/QQ数据目录"
+          >
+            <FolderOpen size={13} className="text-cyan-400" />
+            手动指定缓存目录...
+          </button>
+        </div>
+
+        {/* 扫描命中或手动指定的路径候选标签条 */}
+        {discoveredCaches.length > 0 && (
+          <div className="pt-2 border-t border-slate-800/40 flex items-center gap-2 flex-wrap text-xs">
+            <span className="text-slate-400 font-medium">发现缓存路径 ({discoveredCaches.length}):</span>
+            {discoveredCaches.map((item, idx) => {
+              const isSelected = selectedAccount?.path.startsWith(item.dataRoot) || activeDiscovered?.dataRoot === item.dataRoot;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => handleSelectDiscoveredCache(item)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition ${
+                    isSelected
+                      ? "bg-emerald-600/30 text-emerald-300 border border-emerald-500/50 shadow-sm"
+                      : "bg-slate-950/70 text-slate-300 hover:text-white border border-slate-800"
+                  }`}
+                >
+                  <span className="font-semibold">{item.appName}:</span>
+                  <span className="font-mono text-[11px] truncate max-w-[200px]">{item.dataRoot}</span>
+                  <span className="text-[10px] text-cyan-400 font-mono">({formatBytes(item.totalBytes)})</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* 账号选择与数据路径提示 */}
         <div className="pt-2.5 border-t border-slate-800/60 flex items-center justify-between gap-4 flex-wrap text-xs">
