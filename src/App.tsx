@@ -216,7 +216,7 @@ export default function App() {
       </aside>
 
       {/* 主工作区 */}
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-950">
+      <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-slate-950">
         {activeTab === "explorer" && (
           <ExplorerView onNavigateToMigrate={handleNavigateToMigrate} />
         )}

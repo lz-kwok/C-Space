@@ -1160,6 +1160,25 @@ pub fn evaluate_social_signature(dir: &Path) -> Option<(SocialAppType, String, S
     let dir_name = dir.file_name()?.to_string_lossy();
     let lower_name = dir_name.to_lowercase();
 
+    // 排除通用系统/用户容器目录（绝对不能被误判为某个具体社交软件的根目录）
+    if lower_name == "local"
+        || lower_name == "roaming"
+        || lower_name == "locallow"
+        || lower_name == "appdata"
+        || lower_name == "users"
+        || lower_name == "documents"
+        || lower_name == "program files"
+        || lower_name == "program files (x86)"
+        || lower_name == "programdata"
+        || lower_name == "system32"
+        || lower_name == "tencent"
+        || lower_name == "alibaba"
+        || lower_name == "microsoft"
+        || lower_name == "windows"
+    {
+        return None;
+    }
+
     // 1. 文件夹名直接匹配
     if lower_name == "wechat files" || lower_name == "xwechat_files" {
         return Some((
@@ -1175,7 +1194,7 @@ pub fn evaluate_social_signature(dir: &Path) -> Option<(SocialAppType, String, S
             "匹配企业微信数据根目录 'WXWork'".into(),
         ));
     }
-    if lower_name == "dingtalk" || dir_name == "钉钉" {
+    if lower_name == "dingtalk" || dir_name == "钉钉" || lower_name.starts_with("dingtalk_") {
         return Some((
             SocialAppType::DingTalk,
             "钉钉 (DingTalk)".into(),
@@ -1200,7 +1219,6 @@ pub fn evaluate_social_signature(dir: &Path) -> Option<(SocialAppType, String, S
     let mut has_applet = false;
     let mut has_global = false;
     let mut has_wxid = false;
-    let mut has_dingtalk_flag = false;
     let mut has_filerecv = false;
 
     for entry in entries.flatten().take(50) {
@@ -1216,8 +1234,6 @@ pub fn evaluate_social_signature(dir: &Path) -> Option<(SocialAppType, String, S
             has_global = true;
         } else if l.starts_with("wxid_") {
             has_wxid = true;
-        } else if l.contains("dingtalk") {
-            has_dingtalk_flag = true;
         } else if l == "filerecv" {
             has_filerecv = true;
         }
@@ -1239,11 +1255,11 @@ pub fn evaluate_social_signature(dir: &Path) -> Option<(SocialAppType, String, S
         ));
     }
 
-    if has_dingtalk_flag || (has_filerecv && lower_name.contains("ding")) {
+    if lower_name.contains("ding") && (has_filerecv || has_filestorage) {
         return Some((
             SocialAppType::DingTalk,
             "钉钉 (DingTalk)".into(),
-            "内部结构包含 DingTalk 专属特征".into(),
+            "内部结构包含钉钉专属特征".into(),
         ));
     }
 
@@ -1410,9 +1426,28 @@ pub fn scan_drive_for_social_caches(drive_letter: char, cancel: &Arc<AtomicBool>
         }
     }
 
+    // 3. 父子路径剪枝去重，并过滤小于 1MB 的细碎目录
+    // 按路径长度升序排列，先处理上层父目录
+    results.sort_by_key(|r| r.data_root.len());
+    let mut filtered: Vec<DiscoveredSocialCache> = Vec::new();
+
+    for item in results {
+        let item_norm = item.data_root.replace('/', "\\").to_lowercase();
+        // 检查是否是已收录目录的子目录
+        let is_subpath = filtered.iter().any(|f| {
+            let f_norm = f.data_root.replace('/', "\\").to_lowercase();
+            item_norm == f_norm || item_norm.starts_with(&format!("{}\\", f_norm))
+        });
+
+        // 仅保留顶层根目录，且总大小 >= 1MB
+        if !is_subpath && item.total_bytes >= 1024 * 1024 {
+            filtered.push(item);
+        }
+    }
+
     // 按体积降序排列
-    results.sort_by(|a, b| b.total_bytes.cmp(&a.total_bytes));
-    results
+    filtered.sort_by(|a, b| b.total_bytes.cmp(&a.total_bytes));
+    filtered
 }
 
 /// 分析用户手动选定的任意目录

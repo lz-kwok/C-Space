@@ -353,14 +353,14 @@ export const SocialSlimmerView: React.FC = () => {
   const totalArchiveBytes = archiveItems.reduce((acc, curr) => acc + curr.size, 0);
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden p-6 space-y-5 select-none">
+    <div className="flex-1 flex flex-col h-full overflow-hidden p-6 space-y-4 select-none min-h-0">
       {/* 顶部标题与多应用切换 */}
-      <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4.5 space-y-3.5 backdrop-blur-xl shadow-xl">
+      <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 space-y-3 backdrop-blur-xl shadow-xl shrink-0">
         <div className="flex justify-between items-center flex-wrap gap-4">
           <div>
             <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
               <Sparkles className="text-emerald-400" size={20} />
-              国民社交资产专治 · 微信 / 企微 / QQ 多维透视与无损瘦身
+              国民社交资产专治 · 微信 / 企微 / 钉钉 / QQ 多维透视与无损瘦身
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
               深度解构社交资产架构，保留聊天记录绝对安全前提下，历史音视频沉淀归档至 D 盘，多群重复文件硬链接去重。
@@ -474,8 +474,8 @@ export const SocialSlimmerView: React.FC = () => {
 
         {/* 扫描命中或手动指定的路径候选标签条 */}
         {discoveredCaches.length > 0 && (
-          <div className="pt-2 border-t border-slate-800/40 flex items-center gap-2 flex-wrap text-xs">
-            <span className="text-slate-400 font-medium">发现缓存路径 ({discoveredCaches.length}):</span>
+          <div className="pt-2 border-t border-slate-800/40 flex items-center gap-2 flex-wrap text-xs max-h-24 overflow-y-auto pr-1">
+            <span className="text-slate-400 font-medium shrink-0">发现缓存路径 ({discoveredCaches.length}):</span>
             {discoveredCaches.map((item, idx) => {
               const isSelected = selectedAccount?.path.startsWith(item.dataRoot) || activeDiscovered?.dataRoot === item.dataRoot;
               return (
@@ -544,7 +544,7 @@ export const SocialSlimmerView: React.FC = () => {
       </div>
 
       {/* 核心聊天记录绝对安全物理隔离保护横幅 */}
-      <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-cyan-950/40 border border-emerald-500/40 rounded-2xl p-3.5 px-4.5 flex items-center justify-between gap-4 shadow-lg shadow-emerald-950/20">
+      <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-cyan-950/40 border border-emerald-500/40 rounded-2xl p-3 px-4 flex items-center justify-between gap-4 shadow-lg shadow-emerald-950/20 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.25)]">
             <ShieldCheck size={20} />
@@ -570,7 +570,7 @@ export const SocialSlimmerView: React.FC = () => {
       </div>
 
       {/* 主体滚动区 */}
-      <div className="flex-1 overflow-y-auto space-y-5 pr-1">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pr-1">
         {/* 全景 5 维资产概况卡片 */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4.5 space-y-4">
           <div className="flex justify-between items-center">
