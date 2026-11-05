@@ -379,35 +379,82 @@ export const SocialSlimmerView: React.FC = () => {
   const handleOpenCategoryFolder = (category: "cache" | "video" | "image" | "file" | "db") => {
     if (!selectedAccount) return;
     const base = selectedAccount.path;
-    // 优先从 folderDetails 匹配真实存在的子目录
+
+    // 1. 优先从 folderDetails 匹配真实存在的子目录
     const match = folderDetails.find((f) => {
       const lower = f.path.toLowerCase();
+      const lowerName = f.folderName.toLowerCase();
       switch (category) {
         case "cache":
-          return lower.includes("\\cache") || lower.includes("\\temp") || lower.includes("\\sns") || lower.includes("\\applet");
+          return (
+            lower.includes("\\cache") ||
+            lower.includes("\\temp") ||
+            lower.includes("\\sns") ||
+            lower.includes("\\applet") ||
+            lowerName.includes("cache")
+          );
         case "video":
-          return lower.includes("\\video");
+          return lower.includes("\\video") || lowerName.includes("video") || lowerName.includes("音视频");
         case "image":
-          return lower.includes("\\image");
+          return lower.includes("\\image") || lowerName.includes("image") || lowerName.includes("图片");
         case "file":
-          return lower.includes("\\file") || lower.includes("\\filerecv") || lower.includes("\\attachment");
+          return (
+            lower.includes("\\file") ||
+            lower.includes("\\filerecv") ||
+            lower.includes("\\attachment") ||
+            lowerName.includes("file")
+          );
         case "db":
-          return lower.includes("\\msg");
+          return lower.includes("\\msg") || lowerName.includes("msg") || lowerName.includes("数据库");
       }
     });
 
     if (match) {
       handleOpenFolder(match.path);
-    } else {
-      // 常见架构智能推断
-      let candidate = base;
-      if (category === "cache") candidate = `${base}\\FileStorage\\Cache`;
-      else if (category === "video") candidate = `${base}\\FileStorage\\Video`;
-      else if (category === "image") candidate = `${base}\\FileStorage\\Image`;
-      else if (category === "file") candidate = `${base}\\FileStorage\\File`;
-      else if (category === "db") candidate = `${base}\\Msg`;
-      handleOpenFolder(candidate);
+      return;
     }
+
+    // 2. 根据软件类型智能推断备选路径
+    let candidate = base;
+    if (selectedAppType === "weChat" || selectedAppType === "wXWork") {
+      switch (category) {
+        case "cache":
+          candidate = `${base}\\FileStorage\\Cache`;
+          break;
+        case "video":
+          candidate = `${base}\\FileStorage\\Video`;
+          break;
+        case "image":
+          candidate = `${base}\\FileStorage\\Image`;
+          break;
+        case "file":
+          candidate = `${base}\\FileStorage\\File`;
+          break;
+        case "db":
+          candidate = `${base}\\Msg`;
+          break;
+      }
+    } else {
+      switch (category) {
+        case "cache":
+          candidate = `${base}\\Cache`;
+          break;
+        case "video":
+          candidate = `${base}\\Video`;
+          break;
+        case "image":
+          candidate = `${base}\\Image`;
+          break;
+        case "file":
+          candidate = `${base}\\FileRecv`;
+          break;
+        case "db":
+          candidate = `${base}\\Msg`;
+          break;
+      }
+    }
+
+    handleOpenFolder(candidate);
   };
 
   // 计算总浪费空间

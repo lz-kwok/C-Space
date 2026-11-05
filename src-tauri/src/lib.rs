@@ -345,13 +345,31 @@ fn trash_file(file_path: String) -> Result<(), String> {
 fn open_in_explorer(path: String) -> Result<(), String> {
     use std::process::Command;
     let p = Path::new(&path);
-    if !p.exists() {
-        return Err("文件或路径不存在".into());
+
+    let mut current = p.to_path_buf();
+    while !current.exists() {
+        if let Some(parent) = current.parent() {
+            current = parent.to_path_buf();
+        } else {
+            break;
+        }
     }
-    Command::new("explorer")
-        .args(["/select,", &path])
-        .spawn()
-        .map_err(|e| format!("打开资源管理器失败: {}", e))?;
+
+    if !current.exists() {
+        return Err("指定的路径不存在且无可用的父目录".into());
+    }
+
+    if current.is_dir() {
+        Command::new("explorer")
+            .arg(&current)
+            .spawn()
+            .map_err(|e| format!("打开资源管理器失败: {}", e))?;
+    } else {
+        Command::new("explorer")
+            .arg(format!("/select,{}", current.to_string_lossy()))
+            .spawn()
+            .map_err(|e| format!("打开资源管理器失败: {}", e))?;
+    }
     Ok(())
 }
 
