@@ -241,47 +241,86 @@ pub fn detect_wechat() -> SocialAppInfo {
     // 1. 尝试注册表查询
     #[cfg(windows)]
     {
+        // 1.1 常规微信注册表
         if let Some(val) = get_registry_string(HKEY_CURRENT_USER, r"Software\Tencent\WeChat", "FileSavePath") {
             installed = true;
             let val = val.trim();
             if val.eq_ignore_ascii_case("MyDocument:") || val.is_empty() {
                 if let Some(docs) = get_user_documents_dir() {
-                    data_root = Some(docs.join("WeChat Files"));
+                    let cand = docs.join("WeChat Files");
+                    if cand.exists() {
+                        data_root = Some(cand);
+                    }
                 }
             } else {
                 let p = PathBuf::from(val);
                 if p.exists() {
                     data_root = Some(p);
                 } else if let Some(docs) = get_user_documents_dir() {
-                    data_root = Some(docs.join("WeChat Files"));
+                    let cand = docs.join("WeChat Files");
+                    if cand.exists() {
+                        data_root = Some(cand);
+                    }
                 }
             }
         }
 
-        if let Some(_install) = get_registry_string(HKEY_CURRENT_USER, r"Software\Tencent\WeChat", "InstallPath") {
+        // 1.2 微信 4.0 注册表 (HKCU\Software\Tencent\Weixin)
+        if let Some(val) = get_registry_string(HKEY_CURRENT_USER, r"Software\Tencent\Weixin", "InstallPath") {
             installed = true;
+            let p = PathBuf::from(val.trim());
+            if p.exists() {
+                // 标记已安装
+            }
         }
-    }
 
-    // 2. 常见路径 Fallback
-    if data_root.is_none() {
-        if let Some(docs) = get_user_documents_dir() {
-            let candidate = docs.join("WeChat Files");
-            if candidate.exists() {
-                data_root = Some(candidate);
+        // 1.3 从错误报告注册表反查真实数据目录
+        if data_root.is_none() {
+            if let Some(rpt) = get_registry_string(HKEY_CURRENT_USER, r"Software\Tencent\bugReport\WechatWindows", "ExtRptFile") {
                 installed = true;
+                let lower_rpt = rpt.to_lowercase();
+                if let Some(idx) = lower_rpt.find("wechat files") {
+                    let cand = PathBuf::from(&rpt[..idx + 12]);
+                    if cand.exists() {
+                        data_root = Some(cand);
+                    }
+                }
             }
         }
     }
 
-    // 检查其他盘根
+    // 2. 常见自定义盘符路径 Fallback（重点支持 Cache 目录与非系统盘）
     if data_root.is_none() {
-        for drive in ["D", "E", "F"] {
-            let candidate = PathBuf::from(format!(r"{}:\WeChat Files", drive));
-            if candidate.exists() {
-                data_root = Some(candidate);
-                installed = true;
+        for drive in ["D", "C", "E", "F"] {
+            let candidates = [
+                PathBuf::from(format!(r"{}:\Cache\WeChat Files", drive)),
+                PathBuf::from(format!(r"{}:\WeChat Files", drive)),
+                PathBuf::from(format!(r"{}:\xwechat_files", drive)),
+                PathBuf::from(format!(r"{}:\Cache\xwechat_files", drive)),
+            ];
+            for cand in candidates {
+                if cand.exists() {
+                    data_root = Some(cand);
+                    installed = true;
+                    break;
+                }
+            }
+            if data_root.is_some() {
                 break;
+            }
+        }
+    }
+
+    if data_root.is_none() {
+        if let Some(docs) = get_user_documents_dir() {
+            let cand1 = docs.join("WeChat Files");
+            let cand2 = docs.join("xwechat_files");
+            if cand1.exists() {
+                data_root = Some(cand1);
+                installed = true;
+            } else if cand2.exists() {
+                data_root = Some(cand2);
+                installed = true;
             }
         }
     }
@@ -327,6 +366,25 @@ pub fn detect_wxwork() -> SocialAppInfo {
     }
 
     if data_root.is_none() {
+        for drive in ["D", "C", "E", "F"] {
+            let candidates = [
+                PathBuf::from(format!(r"{}:\Cache\WXWork", drive)),
+                PathBuf::from(format!(r"{}:\WXWork", drive)),
+            ];
+            for cand in candidates {
+                if cand.exists() {
+                    data_root = Some(cand);
+                    installed = true;
+                    break;
+                }
+            }
+            if data_root.is_some() {
+                break;
+            }
+        }
+    }
+
+    if data_root.is_none() {
         if let Some(docs) = get_user_documents_dir() {
             let candidate = docs.join("WXWork");
             if candidate.exists() {
@@ -365,6 +423,27 @@ pub fn detect_qq() -> SocialAppInfo {
             let p = PathBuf::from(val.trim());
             if p.exists() {
                 data_root = Some(p);
+            }
+        }
+    }
+
+    if data_root.is_none() {
+        for drive in ["D", "C", "E", "F"] {
+            let candidates = [
+                PathBuf::from(format!(r"{}:\Cache\QQ Files", drive)),
+                PathBuf::from(format!(r"{}:\QQ Files", drive)),
+                PathBuf::from(format!(r"{}:\Cache\Tencent Files", drive)),
+                PathBuf::from(format!(r"{}:\Tencent Files", drive)),
+            ];
+            for cand in candidates {
+                if cand.exists() {
+                    data_root = Some(cand);
+                    installed = true;
+                    break;
+                }
+            }
+            if data_root.is_some() {
+                break;
             }
         }
     }
@@ -420,6 +499,26 @@ pub fn detect_dingtalk() -> SocialAppInfo {
                 if p.exists() {
                     // 标记已安装
                 }
+            }
+        }
+    }
+
+    if data_root.is_none() {
+        for drive in ["D", "C", "E", "F"] {
+            let candidates = [
+                PathBuf::from(format!(r"{}:\Cache\DingTalk", drive)),
+                PathBuf::from(format!(r"{}:\DingTalk", drive)),
+                PathBuf::from(format!(r"{}:\钉钉", drive)),
+            ];
+            for cand in candidates {
+                if cand.exists() {
+                    data_root = Some(cand);
+                    installed = true;
+                    break;
+                }
+            }
+            if data_root.is_some() {
+                break;
             }
         }
     }
@@ -1180,7 +1279,7 @@ pub fn evaluate_social_signature(dir: &Path) -> Option<(SocialAppType, String, S
     }
 
     // 1. 文件夹名直接匹配
-    if lower_name == "wechat files" || lower_name == "xwechat_files" {
+    if lower_name == "wechat files" || lower_name == "xwechat_files" || lower_name == "weixin" {
         return Some((
             SocialAppType::WeChat,
             "微信 (WeChat)".into(),
@@ -1201,11 +1300,11 @@ pub fn evaluate_social_signature(dir: &Path) -> Option<(SocialAppType, String, S
             "匹配钉钉数据根目录 'DingTalk'".into(),
         ));
     }
-    if lower_name == "tencent files" {
+    if lower_name == "tencent files" || lower_name == "qq files" || lower_name == "qq" || lower_name == "qqnt" {
         return Some((
             SocialAppType::QQ,
             "腾讯 QQ (QQ NT)".into(),
-            "匹配 QQ 数据根目录 'Tencent Files'".into(),
+            "匹配 QQ 数据根目录 'Tencent Files / QQ Files'".into(),
         ));
     }
 
@@ -1284,11 +1383,19 @@ pub fn scan_drive_for_social_caches(drive_letter: char, cancel: &Arc<AtomicBool>
 
     // 1. 先检查已知高频候选路径（秒级命中）
     let high_priority_candidates = [
+        format!(r"{}:\Cache\WeChat Files", drive),
         format!(r"{}:\WeChat Files", drive),
-        format!(r"{}:\WXWork", drive),
+        format!(r"{}:\xwechat_files", drive),
+        format!(r"{}:\Cache\xwechat_files", drive),
+        format!(r"{}:\Cache\DingTalk", drive),
         format!(r"{}:\DingTalk", drive),
         format!(r"{}:\钉钉", drive),
+        format!(r"{}:\Cache\QQ Files", drive),
+        format!(r"{}:\QQ Files", drive),
         format!(r"{}:\Tencent Files", drive),
+        format!(r"{}:\Cache\Tencent Files", drive),
+        format!(r"{}:\Cache\WXWork", drive),
+        format!(r"{}:\WXWork", drive),
         format!(r"{}:\Tencent\WeChat", drive),
         format!(r"{}:\Tencent\WXWork", drive),
         format!(r"{}:\Tencent\QQNT", drive),

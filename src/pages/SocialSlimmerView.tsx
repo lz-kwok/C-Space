@@ -105,6 +105,10 @@ export const SocialSlimmerView: React.FC = () => {
         if (currentApp.accounts.length > 0) {
           selectAccountAndScan(currentApp.accounts[0]);
         }
+        // 如果当前应用的数据目录在特定驱动器（例如 D:\Cache\WeChat Files），优先将 selectedDrive 设为对应驱动器
+        if (currentApp.dataRoot && currentApp.dataRoot.length >= 2 && currentApp.dataRoot[1] === ":") {
+          setSelectedDrive(currentApp.dataRoot[0].toUpperCase());
+        }
       }
     } catch (e) {
       console.error("加载社交应用信息失败:", e);
@@ -118,11 +122,17 @@ export const SocialSlimmerView: React.FC = () => {
     const target = apps.find((a) => a.appType === type);
     if (target && target.accounts.length > 0) {
       selectAccountAndScan(target.accounts[0]);
+      if (target.dataRoot && target.dataRoot.length >= 2 && target.dataRoot[1] === ":") {
+        setSelectedDrive(target.dataRoot[0].toUpperCase());
+      }
     } else {
       setSelectedAccount(null);
       setSummary(null);
       setArchiveItems([]);
       setDuplicates([]);
+      if (target && target.dataRoot && target.dataRoot.length >= 2 && target.dataRoot[1] === ":") {
+        setSelectedDrive(target.dataRoot[0].toUpperCase());
+      }
     }
   };
 
@@ -202,7 +212,24 @@ export const SocialSlimmerView: React.FC = () => {
       });
       setDiscoveredCaches(res);
       if (res.length > 0) {
-        handleSelectDiscoveredCache(res[0]);
+        // 关键逻辑：优先查找并激活与当前选中软件类型匹配的缓存！
+        const matchCurrent = res.find((r) => r.appType === selectedAppType);
+        if (matchCurrent) {
+          handleSelectDiscoveredCache(matchCurrent);
+        } else {
+          // 当前磁盘未发现当前软件（例如 C 盘只有钉钉，而微信在 D 盘）
+          const currentAppName =
+            selectedAppType === "weChat"
+              ? "微信 (WeChat)"
+              : selectedAppType === "dingTalk"
+              ? "钉钉 (DingTalk)"
+              : selectedAppType === "wXWork"
+              ? "企业微信 (WXWork)"
+              : "腾讯 QQ";
+          alert(
+            `在 ${selectedDrive} 盘未扫描到【${currentAppName}】的数据目录。\n\n扫描到了其它软件缓存（例如 ${res[0].appName}，可在下方「发现缓存路径」中点击切换）。如果您的${currentAppName}数据存储在其他磁盘（如 D 盘），建议切换顶部磁盘后重新扫描。`
+          );
+        }
       } else {
         alert(`在 ${selectedDrive} 盘未扫描到明显的社交软件特征目录。建议尝试切换其他磁盘，或点击右侧「手动指定缓存目录」直接定位。`);
       }
