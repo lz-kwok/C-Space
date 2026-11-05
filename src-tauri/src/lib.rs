@@ -26,8 +26,10 @@ use scanner::{scan_dir_level_progressive, FileNode, ScanContext};
 use winapi::{is_elevated, kill_process, list_drives, relaunch_as_admin, DriveInfo};
 use social::{
     detect_wechat, detect_wxwork, detect_dingtalk, detect_qq, scan_account_assets, filter_archive_media,
-    archive_media_files, deduplicate_via_hardlink, clean_cache_dirs, analyze_account_folders, SocialAppInfo,
+    archive_media_files, deduplicate_via_hardlink, clean_cache_dirs, analyze_account_folders,
+    scan_drive_for_social_caches, analyze_custom_social_path, SocialAppInfo,
     SocialAssetSummary, MediaArchiveItem, ArchiveResult, SocialDuplicateGroup, SocialFolderDetail,
+    DiscoveredSocialCache,
 };
 
 #[tauri::command]
@@ -58,6 +60,18 @@ fn get_social_apps() -> Vec<SocialAppInfo> {
         detect_dingtalk(),
         detect_qq(),
     ]
+}
+
+#[tauri::command]
+fn scan_disk_for_social_caches(drive: String) -> Vec<DiscoveredSocialCache> {
+    let drive_char = drive.chars().next().unwrap_or('C');
+    let cancel = Arc::new(AtomicBool::new(false));
+    scan_drive_for_social_caches(drive_char, &cancel)
+}
+
+#[tauri::command]
+fn analyze_custom_social_path_cmd(path: String) -> Result<DiscoveredSocialCache, String> {
+    analyze_custom_social_path(&path)
 }
 
 #[tauri::command]
@@ -390,6 +404,8 @@ pub fn run() {
             hardlink_social_duplicate,
             clean_social_caches,
             analyze_social_folders,
+            scan_disk_for_social_caches,
+            analyze_custom_social_path_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running C-Space tauri application");

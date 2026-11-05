@@ -45,6 +45,20 @@ pub struct SocialAppInfo {
     pub accounts: Vec<SocialAccountInfo>,
 }
 
+/// 磁盘主动扫描发现的社交缓存目录
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveredSocialCache {
+    pub app_type: SocialAppType,
+    pub app_name: String,
+    pub data_root: String,
+    pub total_bytes: u64,
+    pub file_count: u64,
+    pub match_reason: String,
+    pub accounts: Vec<SocialAccountInfo>,
+    pub folders: Vec<SocialFolderDetail>,
+}
+
 /// 社交账号信息
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -1131,5 +1145,306 @@ pub fn analyze_account_folders(account_path: &str) -> Vec<SocialFolderDetail> {
     // 按体积降序排列
     details.sort_by(|a, b| b.size.cmp(&a.size));
     details
+}
+
+// -------------------------------------------------------------------------------------------------
+// 基于磁盘的主动社交缓存特征扫描算法与自定义路径解析
+// -------------------------------------------------------------------------------------------------
+
+/// 针对任意目录检测其是否包含社交软件特征签名
+pub fn evaluate_social_signature(dir: &Path) -> Option<(SocialAppType, String, String)> {
+    if !dir.is_dir() {
+        return None;
+    }
+
+    let dir_name = dir.file_name()?.to_string_lossy();
+    let lower_name = dir_name.to_lowercase();
+
+    // 1. 文件夹名直接匹配
+    if lower_name == "wechat files" || lower_name == "xwechat_files" {
+        return Some((
+            SocialAppType::WeChat,
+            "微信 (WeChat)".into(),
+            "匹配标准微信数据根目录 'WeChat Files'".into(),
+        ));
+    }
+    if lower_name == "wxwork" || lower_name == "wxworkfiles" {
+        return Some((
+            SocialAppType::WXWork,
+            "企业微信 (WXWork)".into(),
+            "匹配企业微信数据根目录 'WXWork'".into(),
+        ));
+    }
+    if lower_name == "dingtalk" || dir_name == "钉钉" {
+        return Some((
+            SocialAppType::DingTalk,
+            "钉钉 (DingTalk)".into(),
+            "匹配钉钉数据根目录 'DingTalk'".into(),
+        ));
+    }
+    if lower_name == "tencent files" {
+        return Some((
+            SocialAppType::QQ,
+            "腾讯 QQ (QQ NT)".into(),
+            "匹配 QQ 数据根目录 'Tencent Files'".into(),
+        ));
+    }
+
+    // 2. 深入一层检查子目录特征指纹（用于用户自定义重命名的目录）
+    let Ok(entries) = fs::read_dir(dir) else {
+        return None;
+    };
+
+    let mut has_filestorage = false;
+    let mut has_msg = false;
+    let mut has_applet = false;
+    let mut has_global = false;
+    let mut has_wxid = false;
+    let mut has_dingtalk_flag = false;
+    let mut has_filerecv = false;
+
+    for entry in entries.flatten().take(50) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let l = name.to_lowercase();
+        if l == "filestorage" {
+            has_filestorage = true;
+        } else if l == "msg" {
+            has_msg = true;
+        } else if l == "applet" || l == "wmpf" {
+            has_applet = true;
+        } else if l == "global" {
+            has_global = true;
+        } else if l.starts_with("wxid_") {
+            has_wxid = true;
+        } else if l.contains("dingtalk") {
+            has_dingtalk_flag = true;
+        } else if l == "filerecv" {
+            has_filerecv = true;
+        }
+    }
+
+    if (has_filestorage && has_msg) || has_wxid || (has_filestorage && has_applet) {
+        return Some((
+            SocialAppType::WeChat,
+            "微信 (WeChat)".into(),
+            "内部结构包含 FileStorage / Msg / wxid 核心特征".into(),
+        ));
+    }
+
+    if has_global && has_filestorage {
+        return Some((
+            SocialAppType::WXWork,
+            "企业微信 (WXWork)".into(),
+            "内部结构包含 Global 与 FileStorage 企微特征".into(),
+        ));
+    }
+
+    if has_dingtalk_flag || (has_filerecv && lower_name.contains("ding")) {
+        return Some((
+            SocialAppType::DingTalk,
+            "钉钉 (DingTalk)".into(),
+            "内部结构包含 DingTalk 专属特征".into(),
+        ));
+    }
+
+    if has_filerecv && (lower_name.contains("tencent") || lower_name.contains("qq")) {
+        return Some((
+            SocialAppType::QQ,
+            "腾讯 QQ (QQ NT)".into(),
+            "内部结构包含 QQ FileRecv 核心特征".into(),
+        ));
+    }
+
+    None
+}
+
+/// 扫描指定磁盘上的所有潜在社交软件缓存路径
+pub fn scan_drive_for_social_caches(drive_letter: char, cancel: &Arc<AtomicBool>) -> Vec<DiscoveredSocialCache> {
+    let drive = drive_letter.to_ascii_uppercase();
+    let root_str = format!("{}:\\", drive);
+    let root = Path::new(&root_str);
+    let mut results = Vec::new();
+    let mut seen_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    // 1. 先检查已知高频候选路径（秒级命中）
+    let high_priority_candidates = [
+        format!(r"{}:\WeChat Files", drive),
+        format!(r"{}:\WXWork", drive),
+        format!(r"{}:\DingTalk", drive),
+        format!(r"{}:\钉钉", drive),
+        format!(r"{}:\Tencent Files", drive),
+        format!(r"{}:\Tencent\WeChat", drive),
+        format!(r"{}:\Tencent\WXWork", drive),
+        format!(r"{}:\Tencent\QQNT", drive),
+        format!(r"{}:\Users", drive),
+    ];
+
+    for candidate_str in &high_priority_candidates {
+        if cancel.load(Ordering::Relaxed) {
+            return results;
+        }
+        let p = Path::new(candidate_str);
+        if p.exists() && p.is_dir() {
+            if let Some((app_type, app_name, reason)) = evaluate_social_signature(p) {
+                let path_key = p.to_string_lossy().to_string();
+                if seen_paths.insert(path_key.to_lowercase()) {
+                    let (size, files) = crate::scanner::calc_dir_size_fast(p, cancel);
+                    let accounts = find_accounts(p, app_type.clone());
+                    let folders = analyze_account_folders(&path_key);
+                    results.push(DiscoveredSocialCache {
+                        app_type,
+                        app_name,
+                        data_root: path_key,
+                        total_bytes: size,
+                        file_count: files,
+                        match_reason: reason,
+                        accounts,
+                        folders,
+                    });
+                }
+            }
+        }
+    }
+
+    // 2. 深度扫描系统盘 Users 目录或非系统盘常用根目录（层级受控，快速剪枝）
+    let search_roots: Vec<PathBuf> = if drive == 'C' {
+        let mut v = Vec::new();
+        let users_dir = root.join("Users");
+        if users_dir.exists() {
+            if let Ok(entries) = fs::read_dir(&users_dir) {
+                for u in entries.flatten() {
+                    let u_path = u.path();
+                    if u_path.is_dir() {
+                        let name = u.file_name().to_string_lossy().to_string();
+                        if !name.eq_ignore_ascii_case("Public")
+                            && !name.eq_ignore_ascii_case("Default")
+                            && !name.eq_ignore_ascii_case("All Users")
+                        {
+                            v.push(u_path.join("Documents"));
+                            v.push(u_path.join("AppData").join("Roaming"));
+                            v.push(u_path.join("AppData").join("Local"));
+                        }
+                    }
+                }
+            }
+        }
+        v
+    } else {
+        // 非系统盘：扫描根目录下的所有一级与二级目录
+        let mut v = Vec::new();
+        if let Ok(entries) = fs::read_dir(root) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    let lower = name.to_lowercase();
+                    // 过滤系统保留与庞大编译目录
+                    if !lower.starts_with('$')
+                        && !lower.contains("system volume information")
+                        && !lower.contains("recycle.bin")
+                        && !lower.contains("recovery")
+                        && !lower.contains("windows")
+                        && !lower.contains("node_modules")
+                    {
+                        v.push(p);
+                    }
+                }
+            }
+        }
+        v
+    };
+
+    for search_root in search_roots {
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+        if !search_root.exists() || !search_root.is_dir() {
+            continue;
+        }
+
+        // 使用 walkdir 深度受控扫描 (最大探索深度 3)
+        let walker = WalkDir::new(&search_root)
+            .max_depth(3)
+            .follow_links(false)
+            .into_iter()
+            .filter_entry(|e| {
+                let name = e.file_name().to_string_lossy();
+                let lower = name.to_lowercase();
+                !lower.starts_with('$')
+                    && lower != "system volume information"
+                    && lower != "windows"
+                    && lower != "winsxs"
+                    && lower != "node_modules"
+                    && lower != ".git"
+            });
+
+        for entry in walker.flatten() {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+            if !entry.file_type().is_dir() {
+                continue;
+            }
+
+            let path = entry.path();
+            if let Some((app_type, app_name, reason)) = evaluate_social_signature(path) {
+                let path_key = path.to_string_lossy().to_string();
+                if seen_paths.insert(path_key.to_lowercase()) {
+                    let (size, files) = crate::scanner::calc_dir_size_fast(path, cancel);
+                    if size > 0 {
+                        let accounts = find_accounts(path, app_type.clone());
+                        let folders = analyze_account_folders(&path_key);
+                        results.push(DiscoveredSocialCache {
+                            app_type,
+                            app_name,
+                            data_root: path_key,
+                            total_bytes: size,
+                            file_count: files,
+                            match_reason: reason,
+                            accounts,
+                            folders,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 按体积降序排列
+    results.sort_by(|a, b| b.total_bytes.cmp(&a.total_bytes));
+    results
+}
+
+/// 分析用户手动选定的任意目录
+pub fn analyze_custom_social_path(target_path: &str) -> Result<DiscoveredSocialCache, String> {
+    let p = Path::new(target_path);
+    if !p.exists() || !p.is_dir() {
+        return Err("指定的路径不存在或不是文件夹".into());
+    }
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (size, files) = crate::scanner::calc_dir_size_fast(p, &cancel);
+
+    let (app_type, app_name, reason) = evaluate_social_signature(p).unwrap_or_else(|| {
+        (
+            SocialAppType::WeChat,
+            "自定义社交/工作缓存目录".into(),
+            "用户手动指定自定义路径".into(),
+        )
+    });
+
+    let accounts = find_accounts(p, app_type.clone());
+    let folders = analyze_account_folders(target_path);
+
+    Ok(DiscoveredSocialCache {
+        app_type,
+        app_name,
+        data_root: target_path.to_string(),
+        total_bytes: size,
+        file_count: files,
+        match_reason: reason,
+        accounts,
+        folders,
+    })
 }
 
