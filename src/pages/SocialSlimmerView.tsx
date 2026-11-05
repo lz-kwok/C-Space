@@ -375,6 +375,41 @@ export const SocialSlimmerView: React.FC = () => {
     invoke("open_in_explorer", { path }).catch((e) => alert(e));
   };
 
+  // 打开对应分类资产所在的实际物理文件夹
+  const handleOpenCategoryFolder = (category: "cache" | "video" | "image" | "file" | "db") => {
+    if (!selectedAccount) return;
+    const base = selectedAccount.path;
+    // 优先从 folderDetails 匹配真实存在的子目录
+    const match = folderDetails.find((f) => {
+      const lower = f.path.toLowerCase();
+      switch (category) {
+        case "cache":
+          return lower.includes("\\cache") || lower.includes("\\temp") || lower.includes("\\sns") || lower.includes("\\applet");
+        case "video":
+          return lower.includes("\\video");
+        case "image":
+          return lower.includes("\\image");
+        case "file":
+          return lower.includes("\\file") || lower.includes("\\filerecv") || lower.includes("\\attachment");
+        case "db":
+          return lower.includes("\\msg");
+      }
+    });
+
+    if (match) {
+      handleOpenFolder(match.path);
+    } else {
+      // 常见架构智能推断
+      let candidate = base;
+      if (category === "cache") candidate = `${base}\\FileStorage\\Cache`;
+      else if (category === "video") candidate = `${base}\\FileStorage\\Video`;
+      else if (category === "image") candidate = `${base}\\FileStorage\\Image`;
+      else if (category === "file") candidate = `${base}\\FileStorage\\File`;
+      else if (category === "db") candidate = `${base}\\Msg`;
+      handleOpenFolder(candidate);
+    }
+  };
+
   // 计算总浪费空间
   const totalWastedDuplicateBytes = duplicates.reduce((acc, curr) => acc + curr.wastedBytes, 0);
   const totalArchiveBytes = archiveItems.reduce((acc, curr) => acc + curr.size, 0);
@@ -546,20 +581,45 @@ export const SocialSlimmerView: React.FC = () => {
             )}
           </div>
 
-          {/* 账号切换 */}
+          {/* 账号切换：防溢出横向滚动与下拉选择 */}
           {currentApp && currentApp.accounts.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400">选择账号:</span>
-              <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2 max-w-full min-w-0">
+              <span className="text-slate-400 shrink-0 flex items-center gap-1">
+                <UserCheck size={13} />
+                选择账号 ({currentApp.accounts.length}):
+              </span>
+
+              {/* 当账号多于 2 个时提供直接下拉定位，彻底避免横向撑爆 */}
+              {currentApp.accounts.length > 2 && (
+                <select
+                  value={selectedAccount?.accountId || ""}
+                  onChange={(e) => {
+                    const target = currentApp.accounts.find((a) => a.accountId === e.target.value);
+                    if (target) selectAccountAndScan(target);
+                  }}
+                  className="bg-slate-950 border border-slate-700/80 text-cyan-300 font-mono text-xs rounded-lg px-2 py-1 outline-none focus:border-cyan-500 shrink-0 max-w-[180px] truncate"
+                  title="选择当前透视的社交账号"
+                >
+                  {currentApp.accounts.map((acc) => (
+                    <option key={acc.accountId} value={acc.accountId}>
+                      {acc.accountId} ({formatBytes(acc.totalBytes)})
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* 胶囊自适应滚动容器 (带有 max-w 约束和 overflow-x-auto，永不溢出视口) */}
+              <div className="flex items-center gap-1.5 overflow-x-auto max-w-[280px] md:max-w-[420px] lg:max-w-[560px] py-0.5 pr-1">
                 {currentApp.accounts.map((acc) => (
                   <button
                     key={acc.accountId}
                     onClick={() => selectAccountAndScan(acc)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition shrink-0 ${
                       selectedAccount?.accountId === acc.accountId
                         ? "bg-emerald-600/30 text-emerald-300 border border-emerald-500/50 shadow-sm"
                         : "bg-slate-800/60 text-slate-400 hover:text-slate-200 border border-slate-700/40"
                     }`}
+                    title={acc.path}
                   >
                     {acc.accountId} ({formatBytes(acc.totalBytes)})
                   </button>
@@ -600,16 +660,28 @@ export const SocialSlimmerView: React.FC = () => {
       <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pr-1">
         {/* 全景 5 维资产概况卡片 */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4.5 space-y-4">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center flex-wrap gap-2">
             <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
               <Layers size={16} className="text-cyan-400" />
               社交资产全景解构 ({selectedAccount?.accountId || "未选择"})
             </h3>
-            {summary && (
-              <span className="text-xs font-mono text-slate-300">
-                总占用空间: <strong className="text-cyan-300 font-bold">{formatBytes(summary.totalBytes)}</strong>
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {summary && (
+                <span className="text-xs font-mono text-slate-300">
+                  总占用空间: <strong className="text-cyan-300 font-bold">{formatBytes(summary.totalBytes)}</strong>
+                </span>
+              )}
+              {selectedAccount && (
+                <button
+                  onClick={() => handleOpenFolder(selectedAccount.path)}
+                  className="px-2.5 py-1 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-lg text-xs flex items-center gap-1.5 border border-slate-700/60 transition"
+                  title="打开当前账号的本地数据存储根目录"
+                >
+                  <FolderOpen size={13} className="text-cyan-400" />
+                  打开账号根目录
+                </button>
+              )}
+            </div>
           </div>
 
           {loading ? (
@@ -655,16 +727,20 @@ export const SocialSlimmerView: React.FC = () => {
               {/* 5 维数据小卡片 */}
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-1">
                 {/* 1. 朋友圈/临时缓存 */}
-                <div className="bg-slate-950/60 border border-amber-500/20 rounded-xl p-3 flex flex-col justify-between">
+                <div className="bg-slate-950/60 border border-amber-500/20 hover:border-amber-500/40 rounded-xl p-3 flex flex-col justify-between transition">
                   <div>
                     <div className="flex items-center justify-between text-xs text-amber-400">
                       <span className="flex items-center gap-1.5 font-medium">
                         <Sparkles size={13} />
                         安全临时缓存
                       </span>
-                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded">
-                        0风险
-                      </span>
+                      <button
+                        onClick={() => handleOpenCategoryFolder("cache")}
+                        className="p-1 hover:bg-slate-800/80 text-slate-400 hover:text-amber-300 rounded transition"
+                        title="打开安全临时缓存目录"
+                      >
+                        <FolderOpen size={13} />
+                      </button>
                     </div>
                     <div className="text-base font-bold font-mono text-slate-100 mt-2">
                       {formatBytes(summary.cacheBytes)}
@@ -673,25 +749,44 @@ export const SocialSlimmerView: React.FC = () => {
                       {summary.cacheFiles} 项 (Sns/小程序/预览)
                     </div>
                   </div>
-                  {summary.cacheBytes > 0 && (
+                  <div className="mt-3 flex items-center justify-between gap-1.5">
+                    {summary.cacheBytes > 0 && (
+                      <button
+                        onClick={handleCleanCache}
+                        disabled={isCleaningCache}
+                        className="flex-1 py-1 bg-amber-600/30 hover:bg-amber-600 text-amber-300 hover:text-white rounded-lg text-xs font-semibold transition"
+                      >
+                        {isCleaningCache ? "清理中..." : "一键清空"}
+                      </button>
+                    )}
                     <button
-                      onClick={handleCleanCache}
-                      disabled={isCleaningCache}
-                      className="mt-3 w-full py-1 bg-amber-600/30 hover:bg-amber-600 text-amber-300 hover:text-white rounded-lg text-xs font-semibold transition"
+                      onClick={() => handleOpenCategoryFolder("cache")}
+                      className={`text-[11px] text-amber-300 hover:text-amber-200 flex items-center gap-1 transition ${
+                        summary.cacheBytes > 0 ? "px-2 py-1 bg-slate-900 rounded-lg border border-slate-800" : "w-full py-1 text-center justify-center bg-slate-900/60 rounded-lg"
+                      }`}
+                      title="在资源管理器中打开缓存目录"
                     >
-                      {isCleaningCache ? "清理中..." : "一键清空"}
+                      <FolderOpen size={12} />
+                      打开目录
                     </button>
-                  )}
+                  </div>
                 </div>
 
                 {/* 2. 聊天音视频 */}
-                <div className="bg-slate-950/60 border border-purple-500/20 rounded-xl p-3 flex flex-col justify-between">
+                <div className="bg-slate-950/60 border border-purple-500/20 hover:border-purple-500/40 rounded-xl p-3 flex flex-col justify-between transition">
                   <div>
                     <div className="flex items-center justify-between text-xs text-purple-400 font-medium">
                       <span className="flex items-center gap-1.5">
                         <Film size={13} />
                         群聊与个人音视频
                       </span>
+                      <button
+                        onClick={() => handleOpenCategoryFolder("video")}
+                        className="p-1 hover:bg-slate-800/80 text-slate-400 hover:text-purple-300 rounded transition"
+                        title="在资源管理器中打开音视频目录"
+                      >
+                        <FolderOpen size={13} />
+                      </button>
                     </div>
                     <div className="text-base font-bold font-mono text-slate-100 mt-2">
                       {formatBytes(summary.videoBytes)}
@@ -700,19 +795,36 @@ export const SocialSlimmerView: React.FC = () => {
                       {summary.videoFiles} 项视频文件
                     </div>
                   </div>
-                  <span className="text-[10px] text-purple-300/80 bg-purple-500/10 p-1.5 rounded mt-3 text-center">
-                    支持下方分期归档
-                  </span>
+                  <div className="flex items-center justify-between gap-1 mt-3">
+                    <span className="text-[10px] text-purple-300/80 bg-purple-500/10 px-2 py-1 rounded">
+                      支持下方归档
+                    </span>
+                    <button
+                      onClick={() => handleOpenCategoryFolder("video")}
+                      className="text-[11px] text-purple-300 hover:text-purple-200 flex items-center gap-1 transition"
+                      title="打开音视频存储目录"
+                    >
+                      <FolderOpen size={12} />
+                      打开目录
+                    </button>
+                  </div>
                 </div>
 
                 {/* 3. 聊天图片 */}
-                <div className="bg-slate-950/60 border border-cyan-500/20 rounded-xl p-3 flex flex-col justify-between">
+                <div className="bg-slate-950/60 border border-cyan-500/20 hover:border-cyan-500/40 rounded-xl p-3 flex flex-col justify-between transition">
                   <div>
                     <div className="flex items-center justify-between text-xs text-cyan-400 font-medium">
                       <span className="flex items-center gap-1.5">
                         <ImageIcon size={13} />
                         聊天图片与缩略图
                       </span>
+                      <button
+                        onClick={() => handleOpenCategoryFolder("image")}
+                        className="p-1 hover:bg-slate-800/80 text-slate-400 hover:text-cyan-300 rounded transition"
+                        title="在资源管理器中打开图片目录"
+                      >
+                        <FolderOpen size={13} />
+                      </button>
                     </div>
                     <div className="text-base font-bold font-mono text-slate-100 mt-2">
                       {formatBytes(summary.imageBytes)}
@@ -721,19 +833,36 @@ export const SocialSlimmerView: React.FC = () => {
                       {summary.imageFiles} 项图片资产
                     </div>
                   </div>
-                  <span className="text-[10px] text-cyan-300/80 bg-cyan-500/10 p-1.5 rounded mt-3 text-center">
-                    历史图片完整保留
-                  </span>
+                  <div className="flex items-center justify-between gap-1 mt-3">
+                    <span className="text-[10px] text-cyan-300/80 bg-cyan-500/10 px-2 py-1 rounded">
+                      完整保留
+                    </span>
+                    <button
+                      onClick={() => handleOpenCategoryFolder("image")}
+                      className="text-[11px] text-cyan-300 hover:text-cyan-200 flex items-center gap-1 transition"
+                      title="打开聊天图片存储目录"
+                    >
+                      <FolderOpen size={12} />
+                      打开目录
+                    </button>
+                  </div>
                 </div>
 
                 {/* 4. 接收群文件 */}
-                <div className="bg-slate-950/60 border border-emerald-500/20 rounded-xl p-3 flex flex-col justify-between">
+                <div className="bg-slate-950/60 border border-emerald-500/20 hover:border-emerald-500/40 rounded-xl p-3 flex flex-col justify-between transition">
                   <div>
                     <div className="flex items-center justify-between text-xs text-emerald-400 font-medium">
                       <span className="flex items-center gap-1.5">
                         <FileText size={13} />
                         接收文档与群文件
                       </span>
+                      <button
+                        onClick={() => handleOpenCategoryFolder("file")}
+                        className="p-1 hover:bg-slate-800/80 text-slate-400 hover:text-emerald-300 rounded transition"
+                        title="在资源管理器中打开接收文件目录"
+                      >
+                        <FolderOpen size={13} />
+                      </button>
                     </div>
                     <div className="text-base font-bold font-mono text-slate-100 mt-2">
                       {formatBytes(summary.fileBytes)}
@@ -742,22 +871,36 @@ export const SocialSlimmerView: React.FC = () => {
                       {summary.fileFiles} 项文档/压缩包
                     </div>
                   </div>
-                  <span className="text-[10px] text-emerald-300/80 bg-emerald-500/10 p-1.5 rounded mt-3 text-center">
-                    支持多群硬链接去重
-                  </span>
+                  <div className="flex items-center justify-between gap-1 mt-3">
+                    <span className="text-[10px] text-emerald-300/80 bg-emerald-500/10 px-2 py-1 rounded">
+                      硬链接去重
+                    </span>
+                    <button
+                      onClick={() => handleOpenCategoryFolder("file")}
+                      className="text-[11px] text-emerald-300 hover:text-emerald-200 flex items-center gap-1 transition"
+                      title="打开接收文件存储目录"
+                    >
+                      <FolderOpen size={12} />
+                      打开目录
+                    </button>
+                  </div>
                 </div>
 
                 {/* 5. 核心数据库 (保护区) */}
-                <div className="bg-slate-950/60 border border-blue-500/30 rounded-xl p-3 flex flex-col justify-between shadow-[0_0_15px_rgba(59,130,246,0.1)]">
+                <div className="bg-slate-950/60 border border-blue-500/30 hover:border-blue-500/50 rounded-xl p-3 flex flex-col justify-between shadow-[0_0_15px_rgba(59,130,246,0.1)] transition">
                   <div>
                     <div className="flex items-center justify-between text-xs text-blue-400 font-medium">
                       <span className="flex items-center gap-1.5">
                         <Database size={13} />
                         核心聊天记录库
                       </span>
-                      <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1 py-0.2 rounded font-semibold">
-                        已防护
-                      </span>
+                      <button
+                        onClick={() => handleOpenCategoryFolder("db")}
+                        className="p-1 hover:bg-slate-800/80 text-slate-400 hover:text-blue-300 rounded transition"
+                        title="在资源管理器中查看 Msg 聊天数据库"
+                      >
+                        <FolderOpen size={13} />
+                      </button>
                     </div>
                     <div className="text-base font-bold font-mono text-slate-100 mt-2">
                       {formatBytes(summary.protectedDbBytes)}
@@ -766,9 +909,19 @@ export const SocialSlimmerView: React.FC = () => {
                       {summary.protectedDbFiles} 个数据库只读锁定
                     </div>
                   </div>
-                  <span className="text-[10px] text-blue-300/90 bg-blue-500/15 p-1.5 rounded mt-3 text-center font-medium">
-                    🛡️ 绝对安全禁止删除
-                  </span>
+                  <div className="flex items-center justify-between gap-1 mt-3">
+                    <span className="text-[10px] text-blue-300/90 bg-blue-500/15 px-2 py-1 rounded font-medium">
+                      🛡️ 只读防护
+                    </span>
+                    <button
+                      onClick={() => handleOpenCategoryFolder("db")}
+                      className="text-[11px] text-blue-300 hover:text-blue-200 flex items-center gap-1 transition"
+                      title="在资源管理器中查看数据库文件"
+                    >
+                      <FolderOpen size={12} />
+                      打开目录
+                    </button>
+                  </div>
                 </div>
               </div>
 
