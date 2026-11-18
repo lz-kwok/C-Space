@@ -10,6 +10,7 @@ mod scanner;
 mod winapi;
 mod mft;
 mod social;
+mod system_audit;
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,6 +32,13 @@ use social::{
     SocialAssetSummary, MediaArchiveItem, ArchiveResult, SocialDuplicateGroup, SocialFolderDetail,
     DiscoveredSocialCache,
 };
+
+use system_audit::{run_c_drive_audit, CDriveAuditReport};
+
+#[tauri::command]
+fn audit_c_drive_physical(state: State<'_, ScanContext>) -> CDriveAuditReport {
+    run_c_drive_audit(&state.cancel_flag)
+}
 
 #[tauri::command]
 fn check_elevation() -> bool {
@@ -424,6 +432,7 @@ pub fn run() {
             analyze_social_folders,
             scan_disk_for_social_caches,
             analyze_custom_social_path_cmd,
+            audit_c_drive_physical,
         ])
         .run(tauri::generate_context!())
         .expect("error while running C-Space tauri application");

@@ -72,23 +72,26 @@ pub fn get_link_info(path: &Path) -> (bool, Option<String>) {
 }
 
 #[cfg(windows)]
-fn is_reparse_point(entry: &walkdir::DirEntry) -> bool {
+pub fn is_path_reparse_point(path: &Path) -> bool {
     use std::os::windows::fs::MetadataExt;
-    if entry.path_is_symlink() {
-        return true;
-    }
-    if let Ok(meta) = entry.metadata() {
-        // FILE_ATTRIBUTE_REPARSE_POINT = 0x400
-        if meta.file_attributes() & 0x400 != 0 {
+    if let Ok(meta) = fs::symlink_metadata(path) {
+        if meta.file_type().is_symlink() || (meta.file_attributes() & 0x400 != 0) {
             return true;
         }
     }
-    false
+    junction::exists(path).unwrap_or(false)
 }
 
 #[cfg(not(windows))]
+pub fn is_path_reparse_point(path: &Path) -> bool {
+    fs::symlink_metadata(path).map(|m| m.file_type().is_symlink()).unwrap_or(false)
+}
+
 fn is_reparse_point(entry: &walkdir::DirEntry) -> bool {
-    entry.path_is_symlink()
+    if entry.path_is_symlink() {
+        return true;
+    }
+    is_path_reparse_point(entry.path())
 }
 
 /// 快速计算单项目录总大小与文件数（流式轻量迭代遍历，常数级 O(1) 内存占用）
@@ -99,7 +102,7 @@ pub fn calc_dir_size_fast(path: &Path, cancel: &Arc<AtomicBool>) -> (u64, u64) {
     }
 
     let (is_link, _) = get_link_info(path);
-    if is_link {
+    if is_link || is_path_reparse_point(path) {
         return (0, 0);
     }
 

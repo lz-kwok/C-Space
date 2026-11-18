@@ -251,3 +251,32 @@ export interface DiscoveredSocialCache {
   accounts: SocialAccountInfo[];
   folders: SocialFolderDetail[];
 }
+
+export interface ReparseAuditItem {
+  path: string;
+  name: string;
+  linkType: "Junction" | "Symlink" | string;
+  target: string;
+  isValid: boolean;
+}
+
+export interface RealPhysicalUsage {
+  path: string;
+  name: string;
+  category: string;
+  sizeBytes: number;
+  fileCount: number;
+  isReparse: boolean;
+  target?: string;
+  suggestion: string;
+}
+
+export interface CDriveAuditReport {
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+  reparsePoints: ReparseAuditItem[];
+  realTopDirs: RealPhysicalUsage[];
+  safeCleanItems: CleanItemSummary[];
+  totalCleanableBytes: number;
+}
